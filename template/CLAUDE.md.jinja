@@ -1,0 +1,10 @@
+# {{ project_name }}
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before changing anything. It holds this
+project's rules — the verification gate, how commits and pull requests are
+written, and how a release is cut.
+{% if project_kind != "published_library" %}
+Read [crates/README.md](crates/README.md) before adding a crate, or when
+deciding whether something belongs in `apps/` or in `crates/`.
+{% endif %}
+`cargo xtask ci` is the gate. Run it before saying a change is done.

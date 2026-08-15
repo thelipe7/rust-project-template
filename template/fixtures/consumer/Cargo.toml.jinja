@@ -1,0 +1,17 @@
+# A crate that depends on {{ project_name }} the way a stranger does, and the
+# other half of what `cargo xtask package` asks: packaging says what the
+# upload contains, this says whether what it contains works from outside. A
+# public item that only resolves from inside the crate fails here.
+[package]
+name = "consumer"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Its own workspace, and the parent excludes this directory. A member would
+# share the parent's resolved dependency versions and its feature unification
+# — which is exactly what a real consumer does not get.
+[workspace]
+
+[dependencies]
+{{ project_name }} = { path = "../.." }

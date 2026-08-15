@@ -1,0 +1,31 @@
+name: Dependency security
+
+# The dependency tree changes without the repository changing: an advisory
+# published today is about code that was already vetted yesterday. CI answers
+# "is this change sound"; this answers "is what we already shipped still sound",
+# which is a question only the calendar asks.
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  advisory-database:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/rust
+        with:
+          tools: cargo-audit,cargo-deny
+
+      - name: Enforce dependency policy
+        run: cargo deny check
+
+      - name: Check current RustSec advisories
+        run: cargo audit

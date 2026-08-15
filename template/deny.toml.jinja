@@ -1,0 +1,33 @@
+# What `cargo deny check` enforces about the dependency tree, run by
+# `cargo xtask lint` and again on a schedule by `.github/workflows/security.yml`.
+
+[advisories]
+version = 2
+yanked = "deny"
+# A direct dependency nobody maintains is a decision to make; a transitive one
+# is usually somebody else's to make first. `workspace` is the value that flags
+# the direct ones.
+unmaintained = "workspace"
+# Each entry carries a reason and a date to revisit, because an ignore with
+# neither outlives the advisory it was written for.
+ignore = []
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[licenses]
+version = 2
+# Starts at what this project itself is licensed under. Adding an entry is
+# the decision to accept that license, so the list grows one deliberate line
+# at a time.
+allow = [{% if "Apache" in license_expression %}
+    "Apache-2.0",{% endif %}{% if "MIT" in license_expression %}
+    "MIT",{% endif %}
+]
+confidence-threshold = 0.9
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

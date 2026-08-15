@@ -1,0 +1,189 @@
+name: CI
+
+# The branch globs are not decoration. A pull request opened by a workflow
+# using GITHUB_TOKEN triggers no `pull_request` runs — GitHub's rule, so that
+# automation cannot start automation — which would leave the release and
+# template-update pull requests with no checks at all. A status attaches to a
+# commit rather than to an event, so running on the branch push satisfies the
+# same required check on the same head commit.
+on:
+  pull_request:
+  push:
+    branches: [main, "release-plz-**", "automation/**"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # The `ci` profile in .config/nextest.toml — one run reporting every
+  # failure, not the first. A profile is only active where something names
+  # it, and this is where CI names it.
+  NEXTEST_PROFILE: ci
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # `cargo xtask ci` shells out to each of these; without them it fails on
+      # the missing subcommand rather than on the code.
+      - uses: ./.github/actions/rust
+        with:
+          tools: cargo-deny,cargo-machete,cargo-hack,cargo-nextest,taplo,typos
+
+      - run: cargo xtask ci
+
+  # The gate above runs once, on Linux: formatting, the dependency tree, the
+  # feature powerset and the docs answer the same everywhere, and asking six
+  # times buys six identical answers.
+  #
+  # Compiling and running the tests is the part that does differ — a path
+  # separator, a `#[cfg(unix)]`, a dependency with no Windows story — so that
+  # part runs on every platform this ships to, and only that part.
+  #
+  # `windows-aarch64` is here because GitHub now rents an ARM Windows machine;
+  # before it did, that target first ran on somebody's laptop.
+  platforms:
+    name: ${{ matrix.platform }}
+    needs: rust
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      # One red platform should not hide the other four. Knowing whether a
+      # change broke Windows or broke everything is the whole point of asking.
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: linux-aarch64, runner: ubuntu-24.04-arm }
+          - { platform: macos-aarch64, runner: macos-latest }
+          - { platform: macos-x86_64, runner: macos-15-intel }
+          - { platform: windows-x86_64, runner: windows-latest }
+          - { platform: windows-aarch64, runner: windows-11-arm }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/rust
+        with:
+          tools: cargo-nextest
+
+      - run: cargo xtask check
+      - run: cargo xtask test
+
+  # A musl binary is statically linked — what lets it start on a distribution
+  # older than the runner that built it — and it is where a dependency that
+  # assumes glibc stops compiling. Checked rather than tested: the question
+  # here is whether it builds at all.
+  musl:
+    name: linux-musl
+    needs: rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/rust
+
+      - name: Install the musl target and its linker
+        run: |
+          rustup target add x86_64-unknown-linux-musl
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y musl-tools
+
+      - run: cargo check --workspace --all-targets --all-features --locked --target x86_64-unknown-linux-musl
+
+  # Coverage is reported, not enforced: a threshold is a number somebody
+  # negotiates with rather than a defect it finds. The useful form is the
+  # reviewer seeing which lines went untested, so the summary goes in the job
+  # summary, where it is read, not only into an artifact.
+  #
+  # xtask is excluded: it is build tooling, and counting it moves the number
+  # without telling anybody anything.
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust
+        with:
+          tools: cargo-llvm-cov,cargo-nextest
+      - name: Measure
+        run: |
+          cargo llvm-cov --workspace --all-features --locked \
+            --ignore-filename-regex '(^|/)xtask/' \
+            --lcov --output-path lcov.info
+      - name: Report
+        run: |
+          {
+            echo '## Coverage'
+            echo
+            echo '```'
+            cargo llvm-cov report --summary-only \
+              --ignore-filename-regex '(^|/)xtask/'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-lcov
+          path: lcov.info
+
+  # Workflows are the one part of this repository nothing compiles or runs
+  # before it reaches main. Three independent questions: actionlint parses
+  # them and the shell inside them, zizmor asks whether they are safe, and
+  # the pin check asks whether an external action can change under us.
+  workflows:
+    name: Workflow syntax
+    runs-on: ubuntu-latest
+    # zizmor's online audits authenticate with the plain GH_TOKEN passed
+    # below; nothing here needs more than reading the repository.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSfL \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            | tar -xz actionlint
+
+      - name: Lint
+        run: ./actionlint -color
+
+      - uses: taiki-e/install-action@b27e114ddbae5cc01df19a22cf70a124d5177567 # v2.86.0
+        with:
+          tool: zizmor
+
+      # Template injection, leaked credentials, unused permissions.
+      # `--persona=regular` leaves out the findings only worth arguing about;
+      # a deliberate finding is silenced at the line with a
+      # `# zizmor: ignore[audit-name]` comment carrying its reason.
+      - name: Audit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: zizmor --persona=regular --min-severity=medium .
+
+      # A tag is a name the publisher can move; a commit is not. Local actions
+      # (`./...`) are this repository's own and carry no `@ref` to pin.
+      - name: Every external action is pinned to a commit
+        run: |
+          unpinned="$(grep -rhoE 'uses: [^.][^ ]*@[^ ]+' .github/ | grep -vE '@[0-9a-f]{40}$' || true)"
+          if [ -n "$unpinned" ]; then
+            echo "::error::pin these to a commit SHA, not a tag:"
+            echo "$unpinned"
+            exit 1
+          fi

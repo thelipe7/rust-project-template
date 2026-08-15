@@ -1,0 +1,30 @@
+# The fuzz harness. Its own crate outside the workspace, because cargo-fuzz
+# compiles it with nightly sanitizer flags and a libFuzzer runtime that have
+# no business in the workspace's lockfile or its gate — `cargo xtask ci`
+# never touches this directory.
+#
+# Run it with nightly and cargo-fuzz installed:
+#
+#   cargo install cargo-fuzz
+#   cargo +nightly fuzz run api
+#
+# The first run writes a Cargo.lock here; commit it like any other.
+[package]
+name = "{{ project_name }}-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+{{ project_name }} = { path = ".." }
+
+[[bin]]
+name = "api"
+path = "fuzz_targets/api.rs"
+test = false
+doc = false
+bench = false

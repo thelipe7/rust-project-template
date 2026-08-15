@@ -1,0 +1,42 @@
+# Everything Cargo builds. Reproducible from the sources and the lockfile,
+# so none of it belongs in history.
+/target
+
+# rustfmt and MSVC leave these behind.
+**/*.rs.bk
+*.pdb
+
+# Editors and IDEs. These belong in a global gitignore, but a contributor
+# without one should not have to learn that in a pull request review.
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+\#*\#
+.\#*
+
+# What the operating system's file browser leaves behind.
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Local environment: direnv's cache, and anything holding a secret. The
+# project reads none of it; the entries keep a file created by habit from
+# being committed by accident.
+.direnv/
+.env
+.env.*
+!.env.example
+
+# Cargo.lock is committed on purpose, for a library as much as for an
+# application. Consumers still ignore a library's lockfile, but committing
+# it makes this repository's own CI reproducible: a red build means this
+# code broke, not somebody else's release. `cargo xtask` passes `--locked`
+# to hold that true.

@@ -1,0 +1,41 @@
+name: Miri
+
+# This project allows scoped `unsafe`, where the compiler stops checking.
+# Miri interprets the test suite and reports undefined behavior — an
+# out-of-bounds access, a dangling pointer, a data race, an invalid value —
+# that a normal build happily compiles.
+#
+# Separate from CI because it needs nightly and runs one to two orders of
+# magnitude slower than a native test run.
+# The branch globs match ci.yml's, and for its reason: a pull request opened
+# by automation with GITHUB_TOKEN gets no `pull_request` runs, so the branch
+# push is where its commit gets checked.
+on:
+  pull_request:
+  push:
+    branches: [main, "release-plz-**", "automation/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: miri-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  miri:
+    name: Undefined behavior
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Miri ships only on nightly, and `+nightly` overrides the version
+      # pinned in rust-toolchain.toml for this command alone.
+      - uses: ./.github/actions/rust
+
+      - name: Install nightly with Miri
+        run: rustup toolchain install nightly --component miri --profile minimal
+
+      - run: cargo +nightly miri test --workspace --all-features --locked

@@ -1,0 +1,48 @@
+name: Bug report
+description: Report a reproducible problem with the template.
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Search existing issues and discussions before reporting a bug.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: >-
+        The `copier copy` command you ran, including every `--data` answer, and
+        what you did in the generated project afterwards.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: >-
+        The template version (the `_commit` line in `.copier-answers.yml`), your
+        Copier version (`copier --version`), and your operating system.
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Project kind
+      options:
+        - Published library
+        - Workspace application
+        - Both, or not applicable
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      render: shell

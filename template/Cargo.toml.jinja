@@ -1,0 +1,250 @@
+{% set lint_floor = (rust_version if project_kind == "published_library" else rust_toolchain).split(".") -%}
+{% set floor_has_1_97 = lint_floor[0] | int > 1 or (lint_floor[0] | int == 1 and lint_floor[1] | int >= 97) -%}
+{% if project_kind == "published_library" -%}
+[package]
+name = "{{ project_name }}"
+version = "0.1.0"
+edition = "2024"
+rust-version = "{{ rust_version }}"
+license = "{{ license_expression }}"
+readme = "README.md"
+publish = true
+# What crates.io shows and searches. `cargo publish` refuses a package with no
+# description, and `clippy::cargo` fails the build when any of the rest is
+# missing.
+description = "{{ project_description }}"
+repository = "https://github.com/{{ github_owner }}/{{ project_name }}"
+documentation = "https://docs.rs/{{ project_name }}"
+keywords = [{% for keyword in keywords.split(",") %}"{{ keyword | trim }}"{{ ", " if not loop.last }}{% endfor %}]
+categories = [{% for category in categories.split(",") %}"{{ category | trim }}"{{ ", " if not loop.last }}{% endfor %}]
+# What `cargo package` uploads. Entries are gitignore-style patterns, each
+# anchored with a leading `/` — a bare `README.md` would match at any depth.
+include = [
+    "/src/",
+    "/README.md",
+    "/LICENSE*",
+]
+
+# How docs.rs builds this crate's page. Without `all-features` it builds the
+# default features only, and every feature-gated item is silently missing
+# from the published documentation.
+#
+# `--cfg docsrs` turns on a cfg only docs.rs sets, so
+# `#[cfg_attr(docsrs, doc(cfg(feature = "..")))]` on a gated item prints the
+# feature that turns it on. Declared in `check-cfg` below so a cfg no local
+# build sets does not read as a typo.
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true
+
+[workspace]
+resolver = "3"
+members = ["xtask"]
+default-members = ["."]
+# Its own workspace on purpose — it depends on this crate the way a stranger
+# would, and a member would instead share this one's resolved dependencies.
+{% if fuzzing -%}
+# The fuzz harness too: cargo-fuzz builds it with nightly sanitizer flags,
+# and its libFuzzer runtime belongs in neither this lockfile nor the gate.
+exclude = ["fixtures/consumer", "fuzz"]
+{% else -%}
+exclude = ["fixtures/consumer"]
+{% endif -%}
+{% else -%}
+[workspace]
+resolver = "3"
+# `crates/*` matches nothing yet and costs nothing until it does: the shape a
+# workspace grows into is libraries doing the work and applications wiring
+# them together.
+members = ["crates/*", "apps/*", "xtask"]
+
+# No `rust-version`: an MSRV is a promise to whoever compiles this code, and
+# nobody compiles an application — they run the binaries it ships. The floor
+# here is the toolchain pinned in rust-toolchain.toml.
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "{{ license_expression }}"
+publish = false
+description = "{{ project_description }}"
+# Not for a registry — `dist` reads it to know where the releases it builds
+# are hosted, and refuses to initialise without it.
+repository = "https://github.com/{{ github_owner }}/{{ project_name }}"
+
+# Every dependency declared once here and taken with `{ workspace = true }` in
+# the member that uses it. Scattered requirements drift toward incompatible
+# versions and feature sets — invisibly, until two members disagree about a
+# type they both pass around.
+[workspace.dependencies]
+{% endif %}
+# `typos` reads its configuration from here rather than from a file of its
+# own.
+#
+# `target/` is excluded because typos otherwise reports the hashed filenames
+# in the build directory. It skips gitignored paths on its own, but only
+# inside a repository — and `cargo xtask ci` has to pass before `git init`
+# as much as after it.
+#
+# A word that only looks like a typo — a misspelled protocol field, a domain
+# term, somebody's surname — is mapped to itself, recording the decision:
+#
+#   [workspace.metadata.typos.default.extend-words]
+#   <the word> = "<the same word>"
+[workspace.metadata.typos.files]
+extend-exclude = ["target/"]
+
+# Declared once for the whole workspace, and inherited by every member through
+# `[lints] workspace = true`. A member that sets its own would be exempt from
+# whatever is tightened here later, silently.
+[workspace.lints.rust]
+unsafe_code = "{{ 'deny' if unsafe_policy == 'deny' else 'warn' }}"
+unsafe_op_in_unsafe_fn = "warn"
+ambiguous_negative_literals = "warn"
+missing_debug_implementations = "warn"
+# An undocumented public item is an item nobody outside this repository can
+# use. Enforced here rather than at review, which forgets.
+missing_docs = "warn"
+redundant_imports = "warn"
+redundant_lifetimes = "warn"
+trivial_numeric_casts = "warn"
+unused_lifetimes = "warn"
+# Cargo already tells the compiler every feature name declared here, so a
+# `#[cfg(feature = "serd")]` typo is caught without configuration. A cfg set
+# outside Cargo — by a build script, RUSTFLAGS, or another builder — reads as
+# exactly that typo. Declare each as it appears.
+{% if project_kind == "published_library" -%}
+# `docsrs` is the one this crate already has: docs.rs sets it, no local build
+# does, and it is what `#[cfg_attr(docsrs, doc(cfg(..)))]` hangs on.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(docsrs)'] }
+{% else -%}
+#
+#   unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }
+{% endif -%}
+{% if floor_has_1_97 -%}
+# `pub` on an item in a binary exports nothing — a binary has no consumers —
+# and the keyword hides dead code from the lint that would say so.
+dead_code_pub_in_binary = "warn"
+{% else -%}
+# Not enabled: `dead_code_pub_in_binary`, which catches `pub` items a binary
+# cannot export. It landed in 1.97 and an unknown lint name is itself a
+# warning — which this gate denies — so it stays off until the floor this
+# project builds against ({{ rust_version if project_kind == "published_library" else rust_toolchain }}) reaches 1.97.
+{% endif %}
+# One decision per group, made once. `priority = -1` is what lets the
+# individual lints below override the level set for the group they belong to.
+[workspace.lints.clippy]
+correctness = { level = "deny", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+complexity = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+style = { level = "warn", priority = -1 }
+{% if clippy_pedantic -%}
+# Enabled whole rather than cherry-picked, because cherry-picking means never
+# seeing the pedantic lints added later. The three below are the ones almost
+# everybody turns back off; disagree with another by adding it beside them.
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+cast_precision_loss = "allow"
+{% endif -%}
+{% if project_kind == "published_library" -%}
+# Problems that only bite at publish time — missing metadata, a wildcard
+# version requirement. An application workspace publishes nothing, so it
+# skips this group.
+cargo = { level = "warn", priority = -1 }
+# The exception in that group: two semver-major copies of one crate is a fact
+# about somebody else's dependency tree, and can arrive on a day this project
+# changed nothing. Inspect it with `cargo tree --duplicates`, not a build
+# that stops.
+multiple_crate_versions = "allow"
+{% endif -%}
+# Individually chosen from `restriction` and `nursery`, which are menus rather
+# than groups and must never be enabled wholesale.
+allow_attributes_without_reason = "warn"
+as_pointer_underscore = "warn"
+assertions_on_result_states = "warn"
+clone_on_ref_ptr = "warn"
+deref_by_slicing = "warn"
+disallowed_script_idents = "warn"
+empty_drop = "warn"
+empty_enum_variants_with_brackets = "warn"
+empty_structs_with_brackets = "warn"
+fn_to_numeric_cast_any = "warn"
+if_then_some_else_none = "warn"
+map_err_ignore = "warn"
+redundant_type_annotations = "warn"
+renamed_function_params = "warn"
+semicolon_outside_block = "warn"
+too_long_first_doc_paragraph = "warn"
+undocumented_unsafe_blocks = "warn"
+unnecessary_safety_comment = "warn"
+unnecessary_safety_doc = "warn"
+unneeded_field_pattern = "warn"
+unused_result_ok = "warn"
+# Left behind rather than written: a debugging aid, a placeholder, or a
+# message that went to the wrong place. None of them is a style opinion.
+dbg_macro = "warn"
+todo = "warn"
+{% if project_kind == "published_library" -%}
+# A library writes to a writer its caller chose. Printing to the process's
+# stdout takes that choice away, and there is no way to take it back.
+print_stdout = "warn"
+{% endif -%}
+# Not `unwrap_used`: the difference that matters is whether the reason is
+# written down, and `expect` is where it gets written.
+expect_used = "warn"
+# Would fire on every structured-logging call site.
+literal_string_with_formatting_args = "allow"
+
+# Rustdoc's own lints. A broken intra-doc link silently stops linking rather
+# than stopping the build — denied here and through RUSTDOCFLAGS in
+# `cargo xtask docs`.
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "warn"
+invalid_html_tags = "warn"
+unescaped_backticks = "warn"
+{% if project_kind == "published_library" %}
+# The one profile a library sets. Cargo reads profiles from the workspace
+# root only, so consumers never see this — a library imposes no build
+# settings on them.
+#
+# Symbols and line numbers kept: a profiler that cannot name a function has
+# measured something nobody can act on.
+[profile.bench]
+debug = true
+strip = false
+{% else %}
+# Dependencies dominate a debug build's runtime and rarely change.
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 16
+debug = "line-tables-only"
+# Keeps the symbol table, so a backtrace still names functions.
+strip = "debuginfo"
+# Silent wraparound becomes a panic. A wrong number is worse than a crash.
+overflow-checks = true
+
+# The artifact actually shipped, and what `dist` builds. Slow on purpose:
+# fat LTO with one codegen unit multiplies link time — a bad trade on every
+# developer build, a good one on the binary that goes out.
+#
+# `panic = "abort"` belongs here too — but only once nothing in the tree
+# depends on unwinding, because it makes `catch_unwind` do nothing.
+[profile.dist]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+
+[profile.bench]
+inherits = "release"
+debug = true
+strip = false
+{% endif -%}

@@ -1,0 +1,28 @@
+//! The {{ project_name }} application.
+//!
+//! A binary is the one crate nothing can depend on, so whatever lives here
+//! cannot be tested by anything but itself, documented for anyone else, or
+//! reused. Keep this file to reading the arguments and the environment and
+//! calling into a library — see `crates/README.md` for where that library
+//! goes. The greeting below is a placeholder and the first thing to move.
+
+fn main() {
+    println!("{}", greeting());
+}
+
+/// The line this application prints when it has nothing else to say.
+fn greeting() -> &'static str {
+    "{{ project_name }}"
+}
+
+// Unit tests sit in the module they exercise, which lets them reach its
+// private items; `use super::*` is the whole import.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_greeting_names_the_application() {
+        assert_eq!(greeting(), "{{ project_name }}");
+    }
+}

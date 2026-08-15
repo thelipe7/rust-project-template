@@ -1,0 +1,48 @@
+name: MSRV
+
+# `rust-version` in Cargo.toml is a promise to whoever depends on this crate,
+# and only a build pinned to exactly that toolchain keeps it true — the rest
+# of CI compiles with the newer one in rust-toolchain.toml and would never
+# notice an API that raised the floor.
+#
+# The value is read out of the manifest rather than written here, so the
+# promise and the check cannot drift apart.
+# The branch globs match ci.yml's, and for its reason: a pull request opened
+# by automation with GITHUB_TOKEN gets no `pull_request` runs, so the branch
+# push is where its commit gets checked.
+on:
+  pull_request:
+  push:
+    branches: [main, "release-plz-**", "automation/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: msrv-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  msrv:
+    name: Minimum supported Rust version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/rust
+
+      - name: Install the declared MSRV toolchain
+        run: |
+          msrv="$(grep -m1 '^rust-version' Cargo.toml | cut -d'"' -f2)"
+          if [ -z "$msrv" ]; then
+            echo "::error::no rust-version found in Cargo.toml"
+            exit 1
+          fi
+          echo "MSRV=$msrv" >> "$GITHUB_ENV"
+          rustup toolchain install "$msrv" --profile minimal
+
+      # Checked, not tested: the promise is that this compiles on that
+      # toolchain, and dev-dependencies are nobody else's problem.
+      - run: cargo "+$MSRV" check --workspace --all-features --locked

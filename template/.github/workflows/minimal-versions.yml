@@ -1,0 +1,49 @@
+name: Minimal versions
+
+# `serde = "1.0.200"` is a promise that this crate compiles against 1.0.200.
+# Nothing normally tests it: the resolver picks the newest compatible release,
+# so an API added in 1.0.250 goes in without a word and the floor is silently
+# wrong — until a consumer's lockfile pins the older version.
+#
+# `-Z direct-minimal-versions` resolves every *direct* dependency down to the
+# lowest version its requirement allows, and then builds. Direct rather than
+# `-Z minimal-versions`, which also lowers the transitive tree and fails on
+# somebody else's under-specified bound — not a problem this repository can
+# fix.
+#
+# Nightly, because the flag is unstable. Its result is still a fact about the
+# stable build: which versions the requirements in Cargo.toml actually allow.
+on:
+  pull_request:
+  push:
+    branches: [main, "release-plz-**", "automation/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: minimal-versions-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  minimal-versions:
+    name: The declared floors compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/rust
+
+      - name: Install nightly
+        run: rustup toolchain install nightly --profile minimal
+
+      # No `--locked`: rewriting the lockfile downward is the entire point, and
+      # the rewrite is thrown away with the runner.
+      - name: Resolve every direct dependency to its declared floor
+        run: cargo +nightly update -Z direct-minimal-versions
+
+      # Checked rather than tested: the promise is that this compiles against
+      # those versions. Dev-dependencies are nobody else's problem.
+      - run: cargo check --workspace --all-features

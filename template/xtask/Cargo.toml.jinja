@@ -1,0 +1,12 @@
+[package]
+name = "xtask"
+version = "0.0.0"
+edition = "2024"
+publish = false
+# Spelled out rather than inherited: only the workspace kind of this template
+# has a `[workspace.package]` to inherit from, and `cargo deny` reads an
+# unlicensed member as an error whichever kind it is.
+license = "{{ license_expression }}"
+
+[lints]
+workspace = true

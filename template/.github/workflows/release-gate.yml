@@ -1,0 +1,41 @@
+name: Release gate
+
+# Called by release.yml, which dist generates from `plan-jobs` in
+# dist-workspace.toml. It runs in the plan phase, and everything downstream —
+# every build, every upload, the announcement — needs that phase. So this is
+# the last moment at which a release still costs nothing to call off.
+#
+# The job itself does nothing. `environment: release` is the whole point: the
+# environment carries the required reviewers, and GitHub holds the run here
+# until one of them approves it.
+on:
+  workflow_call:
+
+# Nothing here checks out code or calls an API; the jobs only echo. The
+# caller's token stops at this workflow's boundary.
+permissions: {}
+
+jobs:
+  # A dispatch that left the tag at its default is a dry run — it builds and
+  # verifies and publishes nothing, so there is nothing to approve and no
+  # reason to make someone click. On a pull request there are no dispatch
+  # inputs at all and the same holds.
+  dry-run:
+    name: Nothing to approve
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.tag == 'dry-run' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "No tag was asked for, so nothing here will be published."
+
+  # Skipped on a dry run, which leaves this workflow's conclusion to the job
+  # above — every job resolving is a success, and the release carries on.
+  approve:
+    name: Approve the release
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag != 'dry-run' }}
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - env:
+          RELEASE_TAG: ${{ github.event.inputs.tag }}
+          RELEASE_ACTOR: ${{ github.actor }}
+        run: echo "Approved — releasing $RELEASE_TAG as $RELEASE_ACTOR."

@@ -1,0 +1,14 @@
+//! A fuzz target: a function libFuzzer calls in a loop with input it mutates
+//! toward whatever makes more of the crate's code run.
+#![no_main]
+
+use libfuzzer_sys::fuzz_target;
+
+fuzz_target!(|data: &[u8]| {
+    // Hand `data` to whichever public function consumes bytes it did not
+    // produce — a parser, a decoder, a deserializer. The starter crate has
+    // none yet, so this target only proves the harness builds; replace the
+    // body the day one exists.
+    let _ = data;
+    let _ = {{ project_name | replace("-", "_") }}::package_name();
+});

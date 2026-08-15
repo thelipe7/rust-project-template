@@ -1,0 +1,75 @@
+name: Template update
+
+on:
+  schedule:
+    - cron: "17 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+# Two runs updating the same repository would race for the same branch name
+# and open two pull requests for one template release.
+concurrency:
+  group: template-update-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      # The one checkout in this project that keeps its credentials, because
+      # this job pushes a branch with them. Every other one sets
+      # `persist-credentials: false` so that a token cannot ride out inside an
+      # uploaded artifact; here the token is the point.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # zizmor: ignore[artipacked] this job pushes a branch
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      # A floor rather than a pin: `_min_copier_version` in the template is
+      # what says which versions can read it, and naming one exact release
+      # here would be a second answer to drift from the first.
+      - run: uvx --from 'copier>=9.17.0' copier update --trust --defaults
+      # A conflict Copier could not resolve is left on disk as a `.rej` file.
+      # Committing those would open a pull request whose diff looks applied
+      # and is not, so stop and say so — the merge is a person's to do.
+      - name: Fail on an unresolved conflict
+        run: |
+          rejected="$(find . -name '*.rej' -not -path './.git/*')"
+          if [ -n "$rejected" ]; then
+            echo "::error::copier could not merge these; resolve them by running 'copier update' locally:"
+            echo "$rejected"
+            exit 1
+          fi
+      - id: diff
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.diff.outputs.changed == 'true' && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          existing="$(gh issue list --label template-update --state open --json number --jq '.[0].number')"
+          if [ -z "$existing" ]; then
+            gh label create template-update --color 5319E7 --description "Generated project template update" --force
+            gh issue create --label template-update --title "Template update available" --body "A scheduled check found changes from the project template. Run the **Template update** workflow manually to open an update pull request."
+          fi
+      - if: steps.diff.outputs.changed == 'true' && github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch="automation/template-update-${GITHUB_RUN_ID}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add --all
+          # Signed off as the identity configured just above, because the
+          # DCO gate holds this commit to the same rule as every other.
+          git commit -s -m "chore: update project template"
+          git push origin "$branch"
+          gh pr create --base "$GITHUB_REF_NAME" --head "$branch" --title "chore: update project template" --body "Automated Copier update. Review the generated diff and CI results before merging."

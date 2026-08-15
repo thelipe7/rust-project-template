@@ -1,0 +1,167 @@
+# Contributing
+
+Use GitHub Discussions for support and early ideas, and Issues for
+reproducible defects or agreed work.
+
+## Verification
+
+```bash
+cargo xtask ci        # the complete gate — everything below it, in this order
+cargo xtask check     # compile everything, tests and examples included
+cargo xtask lint      # fmt, taplo, typos, clippy denied, deny, machete, hack
+cargo xtask test      # tests, then the examples inside the documentation
+cargo xtask docs      # rustdoc, warnings denied
+{% if project_kind == "published_library" -%}
+cargo xtask package   # what publishing would ship, and a consumer building it
+{% else -%}
+cargo xtask dist      # the shippable artifacts, built for this machine —
+                      # the one task the gate does not run
+{% endif -%}
+```
+
+`cargo xtask ci` is the gate CI runs, so there is nothing to remember to pass
+by hand. Run it before opening a pull request.
+
+The gate shells out to six tools; without them installed it fails on the
+missing command rather than on the code:
+
+```bash
+cargo install cargo-deny cargo-machete cargo-hack cargo-nextest taplo-cli typos-cli
+```
+
+`taplo` formats TOML, which nothing else formats; `typos` reads prose and
+identifiers, where a misspelling compiles and so survives every other check.
+Both are fast enough to sit in the gate.
+
+Tests run under nextest, which gives each test its own process — see
+`.config/nextest.toml` for why that is worth a separate runner. Doctests are
+the one thing it does not run, so `cargo test --doc` runs alongside.
+{% if project_kind != "published_library" %}
+`dist` needs [dist](https://github.com/axodotdev/cargo-dist) and is not part
+of the gate: it is there to try a packaging change locally rather than by
+tagging a release and reading the CI log.
+{% endif %}
+## Dependencies
+
+`Cargo.lock` is committed and every task above passes `--locked`, so a change
+that moves a version moves the lockfile in the same commit. That is what makes
+a red build mean this code broke, not somebody else's release.
+
+A new dependency brings its license with it, and `deny.toml` lists only the
+licenses this project has already accepted — adding one is a line someone
+writes and a reviewer reads.
+
+## Toolchains
+
+`rust-toolchain.toml` pins the compiler this project is developed with, and
+`rustup` installs it on the first `cargo` command.
+{% if project_kind == "published_library" %}
+`rust-version` in `Cargo.toml` is the separate, older floor promised to
+whoever depends on this crate. CI builds with exactly that toolchain, so
+raising it is a deliberate change rather than a side effect of reaching for a
+newer API.
+{% else %}
+There is no `rust-version`: nobody compiles this project but the people
+working on it, and the pinned toolchain is the floor.
+{% endif %}
+## Releasing
+
+release-plz keeps a pull request open carrying the next version and the
+changelog entries for everything merged since the last release. Merging it is
+the decision.
+{% if project_kind == "published_library" %}
+Merging it publishes: the `Release` workflow uploads to crates.io through
+Trusted Publishing, tags the commit, and opens the GitHub release. No registry
+token exists in this repository — CI proves its identity with a short-lived
+token instead.
+
+That depends on three things done once on crates.io, in this order:
+
+1. Publish `0.1.0` by hand. Trusted Publishing cannot create a crate that does
+   not exist yet, and there is no pending-publisher flow.
+2. Add a Trusted Publisher to the crate: this repository, `release.yml`, and
+   the `release` environment. Those three together are the identity.
+3. Turn on "Trusted Publishing only", so a leaked API token cannot publish
+   this crate at all.
+{% else %}
+Merging it only bumps the version. Shipping is a separate, deliberate act:
+dispatch the `Release` workflow with the tag to cut. At its default it
+dry-runs and publishes nothing, so there is no way to ship by accident. With
+a real tag, the run stops at the release gate until a reviewer approves —
+before a single artifact is built — then `dist` builds every target in
+`dist-workspace.toml`, attaches the checksums, source tarball and bill of
+materials, and creates the GitHub release.
+
+That workflow is generated, not written by hand: `dist generate` writes
+`.github/workflows/release.yml` from `dist-workspace.toml`. Re-run it after
+changing that file and commit the result — `dist generate --check` reports
+drift.
+
+Not `dist init`: that command is for a project with no dist configuration
+yet, and it rewrites `dist-workspace.toml` from its own template, deleting
+every comment — which is where the reasons for each setting live.
+{% endif %}
+## As the project grows
+
+The gate covers what every change must pass from day one. Some tools only
+earn their place when the code grows the problem they answer, so they are
+named here rather than installed:
+
+- **proptest** — property-based testing: state what must hold for any input
+  and let the framework hunt for a counterexample. Worth it the day a
+  function's edge cases outnumber the examples anyone would write by hand.
+{% if project_kind == "published_library" -%}
+{% if fuzzing -%}
+- **cargo-fuzz** — the harness under `fuzz/` is scaffolded and waiting; give
+  its target a function that consumes untrusted bytes the day one exists.
+{% else -%}
+- **cargo-fuzz** — coverage-guided random input until something panics, for
+  the day this crate parses bytes it did not produce.
+{% endif -%}
+- **trybuild** — asserts that code which must not compile does not, with the
+  error it should give. For macro work and API-misuse design.
+{% else -%}
+- **cargo-fuzz** — coverage-guided random input until something panics. A
+  fuzzer calls a function, not a running server — the HTTP layer is the
+  framework's, already fuzzed upstream — so the day a crate under `crates/`
+  parses outside input, run `cargo fuzz init` inside that crate and point
+  the target at that function.
+{% endif -%}
+- **cargo-insta** — snapshot testing: assert a complex output once, review
+  its diffs forever after. For output too large to write expectations by
+  hand.
+- **loom** — model-checks every interleaving of concurrent code using
+  atomics or locks; the data race a thousand test runs never hit, found by
+  exhaustion.
+- **sanitizers** (`-Z sanitizer=address,thread`) — undefined-behavior
+  detection where Miri cannot follow: FFI boundaries and real threads.
+- **criterion** or **iai-callgrind** — harnesses for `cargo xtask bench`
+  when "did this get slower?" needs a number; the second measures
+  instructions rather than time, which is what makes it stable enough
+  for CI.
+- **cargo-vet** — recorded audits of dependency source, shared between
+  projects. For code whose compromise would be a security event, not
+  a bug.
+
+## Pull requests
+
+Keep each pull request focused, and add or update a test at the public
+behavior seam being changed.
+
+Pull requests merge by rebase: every commit lands on the default branch
+exactly as written, and release-plz reads those subjects to build the
+changelog and choose the next version. That is why each rule below is about
+the individual commit, not the pull request:
+
+- Conventional Commits: `<type>(scope): <description>`, imperative mood, and
+  CI checks it — on every commit, and on the pull request title. The types are
+  `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`,
+  `style` and `test`. Mark a breaking change with `!` before the colon — a
+  break that does not say so ships as a patch.
+- Every commit carries a `Signed-off-by` line (`git commit -s`) under the
+  Developer Certificate of Origin 1.1, which CI checks commit by commit
+  against each commit's own author. There is no CLA.
+- Hard-wrap commit body lines at 72 characters.
+- Atomic commits: one self-sufficient change per commit. Each one lands on the
+  default branch and becomes its own changelog line, so "and also fixed an
+  unrelated thing on the way" belongs in a commit of its own.

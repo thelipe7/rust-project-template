@@ -1,0 +1,247 @@
+//! The workspace's task runner.
+//!
+//! One entry point for everything a change has to pass — `cargo xtask
+//! <check|lint|test|docs|bench|{{ "package" if project_kind == "published_library" else "dist" }}|ci>` — so that what CI runs and what a
+//! developer runs cannot drift apart. Written in Rust rather than as a shell
+//! script or a Makefile because it is then built and checked by the same
+//! toolchain as the code it verifies.
+
+use std::env;
+use std::ffi::OsStr;
+use std::process::{Command, ExitCode};
+
+/// Whether a variable is Cargo describing xtask to itself.
+///
+/// A child `cargo <subcommand>` inherits these variables and reads them as
+/// proof it was launched by `cargo run`: `cargo-machete` checks
+/// `CARGO_PKG_NAME` for exactly that and then takes its own name, `machete`,
+/// for a directory to scan. Every child here is a fresh invocation from the
+/// workspace root, so hand it the environment such an invocation would have.
+fn describes_xtask_to_itself(variable: &str) -> bool {
+    variable.starts_with("CARGO_PKG_")
+        || matches!(
+            variable,
+            "CARGO_CRATE_NAME"
+                | "CARGO_BIN_NAME"
+                | "CARGO_MANIFEST_DIR"
+                | "CARGO_MANIFEST_PATH"
+                | "CARGO_PRIMARY_PACKAGE"
+        )
+}
+
+fn command<I, S>(program: &str, args: I) -> Result<(), String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    command_with_env(program, args, &[])
+}
+
+fn command_with_env<I, S>(
+    program: &str,
+    args: I,
+    environment: &[(&str, &str)],
+) -> Result<(), String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let mut child = Command::new(program);
+    child.args(args);
+    for (variable, _) in env::vars() {
+        if describes_xtask_to_itself(&variable) {
+            child.env_remove(&variable);
+        }
+    }
+    for (variable, value) in environment {
+        child.env(variable, value);
+    }
+
+    let status = child
+        .status()
+        .map_err(|error| format!("failed to start `{program}`: {error}"))?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("`{program}` exited with {status}"))
+    }
+}
+
+fn cargo<const N: usize>(args: [&str; N]) -> Result<(), String> {
+    command("cargo", args)
+}
+{% if project_kind != "published_library" %}
+/// Whether any crate under `crates/` carries a library, and so a doctest.
+///
+/// An application workspace starts with none, and grows them as the work that
+/// deserves testing without a binary around it moves out of `apps/`.
+fn workspace_has_a_library() -> bool {
+    std::fs::read_dir("crates").is_ok_and(|entries| {
+        entries
+            .flatten()
+            .any(|entry| entry.path().join("src/lib.rs").is_file())
+    })
+}
+{% endif %}
+fn run(task: &str) -> Result<(), String> {
+    match task {
+        "check" => cargo([
+            "check",
+            "--workspace",
+            "--all-targets",
+            "--all-features",
+            "--locked",
+        ]),
+        "lint" => {
+            cargo(["fmt", "--all", "--", "--check"])?;
+            // The other two formatters: `taplo` for the TOML nothing else
+            // formats, `typos` for the prose and identifiers, where a
+            // misspelling survives every check above because it compiles.
+            command("taplo", ["fmt", "--check"])?;
+            command("typos", [] as [&str; 0])?;
+            cargo([
+                "clippy",
+                "--workspace",
+                "--all-targets",
+                "--all-features",
+                "--locked",
+                "--",
+                "-D",
+                "warnings",
+            ])?;
+            // Advisories, licenses and sources — the questions about the
+            // dependency tree that compiling it never asks.
+            command("cargo", ["deny", "check"])?;
+            // Whether a declared dependency is used at all.
+            // `unused_crate_dependencies` is allow-by-default, so clippy is
+            // equally clean with the dependency and without it.
+            command("cargo", ["machete"])?;
+            // And whether each feature compiles on its own. A feature nobody
+            // builds in isolation stops compiling and nothing else notices,
+            // because every other command here builds `--all-features`.
+            command(
+                "cargo",
+                [
+                    "hack",
+                    "check",
+                    "--workspace",
+                    "--each-feature",
+                    "--no-dev-deps",
+                    "--locked",
+                ],
+            )
+        }
+        "test" => {
+            // Each test in its own process — see .config/nextest.toml.
+            command(
+                "cargo",
+                [
+                    "nextest",
+                    "run",
+                    "--workspace",
+                    "--all-features",
+                    "--locked",
+                ],
+            )?;
+{% if project_kind == "published_library" %}
+            // The one thing nextest does not run.
+            cargo(["test", "--workspace", "--all-features", "--doc", "--locked"])
+{% else %}
+            // The one thing nextest does not run — and the one that needs a
+            // library to run against. `cargo test --doc` fails outright when
+            // there is none, so ask first.
+            if workspace_has_a_library() {
+                cargo(["test", "--workspace", "--all-features", "--doc", "--locked"])
+            } else {
+                Ok(())
+            }
+{% endif %}        }
+        // Outside the gate, and it stays outside: CI runner variance between
+        // two runs of one commit exceeds most wins worth chasing, so a
+        // threshold there fails honest changes and passes slow ones. This is
+        // for running on one machine, twice, either side of a change.
+        //
+        // Succeeds with no benchmarks — add a `benches/` target and a
+        // harness and it starts measuring.
+        "bench" => cargo(["bench", "--workspace", "--all-features", "--locked"]),
+        // Warnings denied, because a broken intra-doc link is a doc page that
+        // silently stops linking rather than a page that fails to build.
+        "docs" => command_with_env(
+            "cargo",
+            [
+                "doc",
+                "--workspace",
+                "--all-features",
+                "--no-deps",
+                "--locked",
+            ],
+            &[("RUSTDOCFLAGS", "-D warnings")],
+        ),
+{% if project_kind == "published_library" %}
+        "package" => {
+            // What `cargo publish` would upload, built again from the
+            // packaged copy — which is how a file the `include` list forgot
+            // is found here rather than by the first person to depend on it.
+            cargo(["package", "--allow-dirty", "--locked"])?;
+            // And the other half of that question, which packaging cannot
+            // answer: whether the public surface works from outside. The
+            // fixture depends on this crate the way a stranger would.
+            command(
+                "cargo",
+                [
+                    "build",
+                    "--manifest-path",
+                    "fixtures/consumer/Cargo.toml",
+                    "--locked",
+                ],
+            )
+        }
+{% else %}
+        // The shippable artifacts for this machine. CI builds the full target
+        // matrix from dist-workspace.toml; this is the same pipeline, run
+        // once, so a packaging mistake surfaces before a tag exists.
+        "dist" => command("dist", ["build"]),
+{% endif %}
+        "ci" => {
+            // First, because a compile error reads better from rustc than
+            // from clippy, and the rest of the gate is wasted on a tree that
+            // does not build.
+            run("check")?;
+            run("lint")?;
+            run("test")?;
+{% if project_kind == "published_library" %}
+            run("docs")?;
+            // In the gate because the two things it checks — what the package
+            // contains, and whether that works for a consumer — are only ever
+            // wrong at publish time, when it is too late to be told.
+            run("package")
+{% else %}
+            run("docs")
+{% endif %}        }
+        _ => Err(format!(
+            "unknown task `{task}`; expected check, lint, test, docs, bench, {{ "package" if project_kind == "published_library" else "dist" }}, or ci"
+        )),
+    }
+}
+
+fn main() -> ExitCode {
+    let mut args = env::args().skip(1);
+    let Some(task) = args.next() else {
+        eprintln!("usage: cargo xtask <check|lint|test|docs|bench|{{ "package" if project_kind == "published_library" else "dist" }}|ci>");
+        return ExitCode::from(2);
+    };
+
+    if args.next().is_some() {
+        eprintln!("xtask commands do not accept positional arguments");
+        return ExitCode::from(2);
+    }
+
+    match run(&task) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("{error}");
+            ExitCode::FAILURE
+        }
+    }
+}

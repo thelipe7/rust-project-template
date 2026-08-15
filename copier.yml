@@ -1,0 +1,334 @@
+_min_copier_version: "9.17.0"
+_subdirectory: template
+_answers_file: .copier-answers.yml
+_preserve_symlinks: true
+# Each entry names a path to leave out, or — when the condition does not hold —
+# a path that does not exist, which is how Copier spells "exclude nothing".
+_exclude:
+  # Copier's own defaults first, restated because writing `_exclude` at all
+  # replaces them — without these, a stray editor backup or `.DS_Store`
+  # committed under `template/` would ship into every generated project.
+  - "copier.yaml"
+  - "copier.yml"
+  - "~*"
+  - "*.py[co]"
+  - "__pycache__"
+  - ".git"
+  - ".DS_Store"
+  - ".svn"
+  - "{% if project_kind == 'published_library' %}/apps{% else %}/src{% endif %}"
+  # A library is published to a registry and promises a minimum toolchain to
+  # whoever depends on it. An application is shipped as binaries and promises
+  # nothing to a compiler it is never built by. Each gets the release path and
+  # the checks that mean something for it, and neither carries the other's.
+  - "{% if project_kind != 'published_library' %}/.github/workflows/release.yml{% else %}/.copier-never-release{% endif %}"
+  - "{% if project_kind != 'published_library' %}/.github/workflows/msrv.yml{% else %}/.copier-never-msrv{% endif %}"
+  # The other floor promised to a consumer: the lowest dependency version each
+  # requirement claims to accept. Nobody consumes an application's manifest.
+  - "{% if project_kind != 'published_library' %}/.github/workflows/minimal-versions.yml{% else %}/.copier-never-minimal{% endif %}"
+  - "{% if project_kind != 'published_library' %}/fixtures{% else %}/.copier-never-fixtures{% endif %}"
+  - "{% if project_kind == 'published_library' %}/crates{% else %}/.copier-never-crates{% endif %}"
+  - "{% if project_kind != 'published_library' %}/tests{% else %}/.copier-never-tests{% endif %}"
+  - "{% if project_kind == 'published_library' %}/dist-workspace.toml{% else %}/.copier-never-dist{% endif %}"
+  - "{% if project_kind == 'published_library' %}/.github/workflows/release-gate.yml{% else %}/.copier-never-gate{% endif %}"
+  - "{% if project_kind == 'published_library' %}/.github/workflows/sbom.yml{% else %}/.copier-never-sbom{% endif %}"
+  # Miri interprets a program to find undefined behavior, which is a question
+  # only code allowed to write `unsafe` can raise.
+  - "{% if unsafe_policy == 'deny' %}/.github/workflows/miri.yml{% else %}/.copier-never-miri{% endif %}"
+  # A project carries the text of every license it offers and no other. Both
+  # license files render under the names computed below; the one the answer
+  # did not ask for is dropped here, matched by its rendered name — so a
+  # single-license project excludes `/LICENSE-MIT` while keeping `/LICENSE`.
+  - "{% if license_expression == 'Apache-2.0' %}/LICENSE-MIT{% else %}/.copier-never-mit{% endif %}"
+  - "{% if license_expression == 'MIT' %}/LICENSE-APACHE-2.0{% else %}/.copier-never-apache{% endif %}"
+  # The opt-in verification surfaces. Each is a question below, because each
+  # costs something — CI minutes, a public score, a directory — that not every
+  # project wants to pay from day one.
+  - "{% if not openssf_scorecard %}/.github/workflows/scorecard.yml{% else %}/.copier-never-scorecard{% endif %}"
+  - "{% if not mutation_testing %}/.github/workflows/mutants.yml{% else %}/.copier-never-mutants{% endif %}"
+  # The kind is part of the condition, not only the `when:` on the question:
+  # an answer can arrive from `--data` without ever being asked, and an
+  # application must not grow a fuzz harness because somebody's answer file
+  # said yes to a question it was never shown.
+  - "{% if not (fuzzing and project_kind == 'published_library') %}/fuzz{% else %}/.copier-never-fuzzing{% endif %}"
+  # Semver checking asks what changed against the published version, and only
+  # a published library has one.
+  - "{% if project_kind != 'published_library' %}/.github/workflows/semver.yml{% else %}/.copier-never-semver{% endif %}"
+_envops:
+  autoescape: false
+  keep_trailing_newline: true
+
+# The three things a template cannot do for itself, said at the one moment
+# somebody is looking. They are in the template's own README too, which is a
+# page the reader has just navigated away from.
+_message_after_copy: |
+
+  {{ project_name }} is generated. Three things are left, and none of them
+  can be done from inside a file:
+
+    1. Commit everything, `.copier-answers.yml` included — `copier update`
+       reads it to merge later template releases.
+
+    2. Apply the settings GitHub keeps in its own database rather than in the
+       repository: rebase-only merges, the branch ruleset and its required
+       checks, Dependabot, secret scanning and CodeQL, the labels automation
+       opens issues with, the `release` environment the release gate waits
+       on, and immutable releases.
+
+         scripts/apply-repository-settings.sh --repo {{ github_owner }}/{{ project_name }}
+
+       That script lives in the template, not here.
+  {%- if project_kind == "published_library" %}
+
+    3. Publish 0.1.0 to crates.io by hand, then add this repository,
+       `release.yml` and the `release` environment as a Trusted Publisher and
+       turn on "Trusted Publishing only". Spelled out in CONTRIBUTING.md.
+       Until then the release workflow has nothing to authenticate as.
+  {%- else %}
+
+    3. Run `dist generate` and commit the `.github/workflows/release.yml` it
+       writes. dist-workspace.toml already says what to build and for which
+       targets; the workflow that reads it is generated rather than shipped,
+       because a hand-written copy would be stale the day dist changes.
+       Until you do, this project has a release configuration and nothing
+       that runs it.
+
+       `generate`, not `init` — `dist init` would rewrite dist-workspace.toml
+       from its own template and delete every comment in it.
+  {%- endif %}
+
+  Then `cargo xtask ci`. It passes on a project generated a minute ago.
+
+
+# No question below carries a default. A default is an answer nobody gave, and
+# a template that guesses puts one account's habits, one year, and one
+# toolchain into every project generated from it. Everything a generated
+# project asserts about itself is asserted by someone.
+#
+# The exceptions are the two entries marked `when: false`. They are not
+# questions — they are values computed from an answer already given, and there
+# is nobody to ask.
+
+# Every free-text question below carries a validator. An answer these rules
+# reject would still generate a project — one failing at `cargo xtask ci` or,
+# worse, `cargo publish`, three steps past the question that caused it. Here
+# is the only moment the error message can sit next to the prompt.
+project_name:
+  type: str
+  help: |-
+    Repository and package name, in kebab-case (example-ui). Cargo derives the
+    Rust identifier (example_ui) from it, so it must be a valid package name:
+    letters, digits, hyphens and underscores only.
+  # `xtask` and `consumer` are the two names the template already uses for
+  # workspace members of its own; a project named after either generates
+  # duplicate packages in the hand-written lockfiles.
+  validator: >-
+    {% if not (project_name | regex_search('^[a-z][a-z0-9_-]*$')) %}
+    Use kebab-case: lowercase letters, digits, hyphens and underscores,
+    starting with a letter.
+    {% endif %}
+    {% if project_name in ['xtask', 'consumer'] %}
+    '{{ project_name }}' is a workspace member the template itself creates.
+    {% endif %}
+
+# Asked right after the name, because most questions below depend on it —
+# which ones are asked at all, and what their help can honestly say.
+project_kind:
+  type: str
+  help: |-
+    What this repository is. A published library ships source to a registry
+    and promises an API and a minimum toolchain to whoever depends on it; a
+    workspace application ships binaries built by dist and promises nothing
+    to a compiler it is never built by.
+  choices:
+    Published library: published_library
+    Workspace application: workspace_app
+
+project_description:
+  type: str
+  help: |-
+    One line saying what this is, under 256 characters.
+    {%- if project_kind == "published_library" %}
+    crates.io shows it in search results and `cargo publish` refuses a
+    package without one.
+    {%- else %}
+    `dist` puts it in the metadata of the installers it builds.
+    {%- endif %}
+  validator: >-
+    {% if not project_description.strip() %}
+    A description is required.
+    {% endif %}
+    {% if project_description | length > 255 %}
+    Keep it under 256 characters.
+    {% endif %}
+
+github_owner:
+  type: str
+  help: |-
+    The GitHub account or organisation the repository lives under. The issue
+    forms link to this repository's own Discussions and private advisory form,
+    and a link has to name the account to reach them.
+  validator: >-
+    {% if not (github_owner | regex_search('^[A-Za-z0-9](-?[A-Za-z0-9]+)*$'))
+       or github_owner | length > 39 %}
+    A GitHub account name: letters, digits and single hyphens, neither first
+    nor last, at most 39 characters.
+    {% endif %}
+
+# crates.io shows these on the crate page and searches them; `clippy::cargo`
+# fails the build without them. Only a published crate is found this way.
+keywords:
+  type: str
+  when: "{{ project_kind == 'published_library' }}"
+  help: |-
+    Up to five comma-separated search terms for crates.io (http, client,
+    async). Each is at most 20 characters, ASCII, starting with a letter.
+  # An empty answer would render `keywords = [""]`, which crates.io rejects at
+  # publish time — the worst possible moment to hear about it.
+  validator: >-
+    {% set entries = keywords.split(',') | map('trim') | list %}
+    {% if entries | length > 5 %}
+    crates.io accepts at most five keywords.
+    {% endif %}
+    {% for entry in entries %}
+    {% if not (entry | regex_search('^[A-Za-z0-9][A-Za-z0-9_+-]{0,19}$')) %}
+    '{{ entry }}' is not a crates.io keyword: letters, digits, `_`, `-` and
+    `+`, starting with a letter or digit, at most 20 characters.
+    {% endif %}
+    {% endfor %}
+
+categories:
+  type: str
+  when: "{{ project_kind == 'published_library' }}"
+  help: |-
+    Up to five comma-separated crates.io category slugs
+    (network-programming, web-programming::http-client). crates.io rejects a
+    slug that is not on its published list.
+  validator: >-
+    {% set entries = categories.split(',') | map('trim') | list %}
+    {% if entries | length > 5 %}
+    crates.io accepts at most five categories.
+    {% endif %}
+    {% for entry in entries %}
+    {% if not (entry | regex_search('^[a-z0-9-]+(::[a-z0-9-]+)?$')) %}
+    '{{ entry }}' is not shaped like a category slug (web-programming, or
+    web-programming::http-client).
+    {% endif %}
+    {% endfor %}
+
+rust_toolchain:
+  type: str
+  help: |-
+    Exact toolchain version pinned in rust-toolchain.toml — the compiler this
+    project is developed and tested with (1.97.1).
+  validator: >-
+    {% if not (rust_toolchain | regex_search('^\d+\.\d+\.\d+$')) %}
+    An exact version, all three parts (1.97.1) — rustup pins what it is told,
+    and "stable" would pin a different compiler every six weeks.
+    {% endif %}
+
+# Asked of a library only. An MSRV is a promise to whoever compiles this code
+# against a toolchain of their choosing, and nobody compiles an application —
+# they run the binaries it ships. Its floor is the toolchain pinned above.
+rust_version:
+  type: str
+  when: "{{ project_kind == 'published_library' }}"
+  help: |-
+    Minimum supported Rust version, as major.minor (1.92). It is a promise to
+    consumers, kept true by a CI job pinned to exactly this toolchain. Edition
+    2024 floors it at 1.85.
+  validator: >-
+    {% if not (rust_version | regex_search('^\d+\.\d+$')) %}
+    Major and minor only (1.92) — a patch release cannot change what
+    compiles, so promising one says nothing extra.
+    {% endif %}
+
+# A choice rather than free text, because the generated license files have to
+# be the ones this expression names. Adding an option means adding its text.
+license_expression:
+  type: str
+  choices:
+    MIT: MIT
+    Apache-2.0: Apache-2.0
+    Both, at the user's option: MIT OR Apache-2.0
+
+# Not asked — computed from the answer above and used as the license files'
+# names. One license is `LICENSE`, because that is the name a reader and every
+# tool looks for; two have to be told apart, so they keep the SPDX identifier.
+mit_license_file:
+  type: str
+  when: false
+  default: "{% if license_expression == 'MIT' %}LICENSE{% else %}LICENSE-MIT{% endif %}"
+
+apache_license_file:
+  type: str
+  when: false
+  default: "{% if license_expression == 'Apache-2.0' %}LICENSE{% else %}LICENSE-APACHE-2.0{% endif %}"
+
+# Asked only when the project offers MIT, the one text with a copyright line
+# to fill. The Apache-2.0 text carries a `Copyright [yyyy] [name of copyright
+# owner]` line only in its appendix — instructions for applying the license to
+# a source file, shipped verbatim by every project that offers it.
+copyright_holder:
+  type: str
+  when: "{{ 'MIT' in license_expression }}"
+  help: The name on the MIT license's copyright line.
+  validator: >-
+    {% if not copyright_holder.strip() %}
+    The MIT license text has a copyright line, and it needs a name on it.
+    {% endif %}
+
+copyright_year:
+  type: str
+  when: "{{ 'MIT' in license_expression }}"
+  help: The year the project started, for the MIT license's copyright line.
+  validator: >-
+    {% if not (copyright_year | regex_search('^\d{4}$')) %}
+    Four digits (2026).
+    {% endif %}
+
+unsafe_policy:
+  type: str
+  choices:
+    Deny unsafe code: deny
+    Allow scoped and documented unsafe code: scoped
+
+# Asked rather than decided here, because it is the one lint group where the
+# right answer depends on the code. Enabled, it is enabled whole — cherry
+# picking individual pedantic lints means never seeing the ones added later —
+# with the three usual opt-outs already off.
+clippy_pedantic:
+  type: bool
+  help: |-
+    Enable clippy's `pedantic` group? It catches a great deal and argues about
+    a great deal; a large test suite is where it usually starts costing more
+    than it returns.
+
+openssf_scorecard:
+  type: bool
+  help: |-
+    Run the OpenSSF Scorecard weekly and publish the score? It grades the
+    repository's supply-chain practices 0-10 — this template already does
+    most of what it measures — and publishing is what makes the badge and
+    the public API work. Public repositories only; a private one without
+    GitHub Advanced Security should answer no.
+
+mutation_testing:
+  type: bool
+  help: |-
+    Run cargo-mutants weekly? Coverage says a line ran; mutation testing says
+    whether a test would notice the line being wrong, by injecting small bugs
+    and counting the ones that survive the suite. It re-runs the tests once
+    per mutant, which is why it is scheduled rather than in the gate.
+
+# Asked of a library only, like the MSRV: a fuzz harness exercises an API
+# from outside, and the library is the kind with an API to exercise.
+fuzzing:
+  type: bool
+  when: "{{ project_kind == 'published_library' }}"
+  help: |-
+    Scaffold a cargo-fuzz harness under `fuzz/`? Fuzzing feeds a function
+    coverage-guided random input until something panics, and is the tool
+    that earns its keep the day this crate parses bytes it did not produce.
+    It needs nightly and `cargo install cargo-fuzz` to run, and runs only
+    when someone asks — never in CI.

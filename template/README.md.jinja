@@ -1,0 +1,26 @@
+# {{ project_name }}
+
+{{ project_name }} is a Rust {{ "library" if project_kind == "published_library" else "application workspace" }}.
+
+{# This file is for people who use the thing. How it is built, verified and
+   released is a different audience, and lives once in CONTRIBUTING.md. -#}
+## License
+
+{# `./` on every link: this file becomes the crate docs through
+   `#![doc = include_str!("../README.md")]`, and rustdoc reads a bare
+   `LICENSE` as an item path to resolve, not a file to point at.
+
+   The links resolve on GitHub but not on docs.rs, which has no file tree
+   to point into — an accepted tradeoff of reusing the README as the crate
+   docs. -#}
+{% if license_expression == "MIT OR Apache-2.0" -%}
+Licensed under either of [MIT](./LICENSE-MIT) or
+[Apache-2.0](./LICENSE-APACHE-2.0), at your option.
+{%- elif license_expression == "Apache-2.0" -%}
+Licensed under the [Apache License, Version 2.0](./LICENSE).
+{%- else -%}
+Licensed under the [MIT license](./LICENSE).
+{%- endif %}
+
+Contributions are accepted under the same terms, certified per commit by a
+`Signed-off-by` trailer. See [CONTRIBUTING.md](CONTRIBUTING.md).

@@ -1,0 +1,60 @@
+name: Release
+
+# The other half of `Prepare release`: merging that pull request is the
+# decision, and this carries it out — publish to crates.io, tag the commit,
+# open the GitHub release.
+#
+# It runs on a push to main that touched the changelog — what merging a
+# release pull request looks like — rather than on every push, because the
+# `release` environment below holds each run for a human, and a prompt on
+# every merge is a prompt nobody reads. release-plz does nothing when the
+# version in Cargo.toml is already on crates.io, so a hand-written changelog
+# entry costs one approval and no release.
+#
+# The one-time crates.io setup this depends on is in CONTRIBUTING.md.
+on:
+  push:
+    branches: [main]
+    paths: ["CHANGELOG.md"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # Part of the identity crates.io checks, not only a gate: a Trusted
+    # Publisher is a repository, a workflow file and an environment together,
+    # so a token minted anywhere else cannot publish this crate.
+    environment: release
+    permissions:
+      # Lets the job mint the short-lived OIDC token that proves to crates.io
+      # which repository, workflow and environment it is. Publishing needs no
+      # registry token at all: there is no long-lived secret here to leak.
+      id-token: write
+      # Tag the released commit and create the GitHub release.
+      contents: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # release-plz compares the tree against the last release tag.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: ./.github/actions/rust
+
+      # release-plz performs the OIDC exchange itself. Nothing here sets
+      # CARGO_REGISTRY_TOKEN, and adding it would opt back out of Trusted
+      # Publishing.
+      - name: Publish
+        uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5.131
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

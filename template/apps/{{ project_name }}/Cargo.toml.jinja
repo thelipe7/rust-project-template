@@ -1,0 +1,21 @@
+[package]
+name = "{{ project_name }}"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description.workspace = true
+publish.workspace = true
+# Inherited rather than left out: `dist` refuses to set up GitHub releases
+# without a repository URL, and it reads that URL off each binary's own
+# manifest. A `[workspace.package]` entry reaches a member only where the
+# member asks for it.
+repository.workspace = true
+
+[lints]
+workspace = true
+
+# `publish = false` says nothing here goes to a registry, but it is also how
+# `dist` decides a package is not worth building — which would leave a
+# release with no binaries. This says: not published, still shipped.
+[package.metadata.dist]
+dist = true

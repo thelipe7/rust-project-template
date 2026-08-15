@@ -1,0 +1,38 @@
+version: 2
+updates:
+  # This repository ships pinned commit SHAs into every project generated from
+  # it — in its own workflows, in the composite action, and in the
+  # `[dist.github-action-commits]` table the generated release workflow is
+  # built from. A pin nobody updates rots, and it rots into other people's
+  # repositories rather than only this one.
+  #
+  # Dependabot reads the `# vX.Y.Z` comment beside each SHA to know the
+  # version it is on, so the comment is load-bearing. It does not look inside
+  # dist-workspace.toml — those four are updated by hand, and `dist generate`
+  # carries them into the workflow.
+  #
+  # Two directories, because `/` alone means this repository's own
+  # `.github/workflows` and nothing else, while an explicitly named directory
+  # is searched for a composite action's `action.yml` — how the template's
+  # composite action is reached. No entry can reach the workflows under
+  # `template/` (Dependabot reads workflow files from the default path only),
+  # so CI holds every action to one commit repo-wide, turning a bump that
+  # reaches half the files into a red check rather than a silent drift.
+  - package-ecosystem: github-actions
+    directories:
+      - "/"
+      - "/template/.github/actions/rust"
+    schedule:
+      interval: weekly
+    # A version published twenty minutes ago is one nobody has looked at. The
+    # cooldown is the gap in which a compromised release is noticed and yanked
+    # before a bot proposes merging it — and since 2026-02-13 the only
+    # guaranteed notice of a crate removed for malware is a RustSec advisory,
+    # which the daily `cargo deny` run reads. Security updates ignore the
+    # cooldown and still arrive immediately.
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ["*"]

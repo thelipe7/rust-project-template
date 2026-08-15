@@ -1,0 +1,147 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  template:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      - name: Install Copier
+        run: uv tool install 'copier>=9.17.0'
+
+      # The suite lints the workflows it renders, and skips that test when
+      # actionlint is missing. This is the run where it must not skip.
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSfL \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            | tar -xz -C /usr/local/bin actionlint
+
+      # The suite runs a generated project's own `cargo xtask ci`, which calls
+      # every one of these.
+      - uses: taiki-e/install-action@b27e114ddbae5cc01df19a22cf70a124d5177567 # v2.86.0
+        with:
+          tool: cargo-deny,cargo-machete,cargo-hack,cargo-nextest,taplo,typos
+
+      # The suite runs `dist generate` on a generated application: the setup
+      # step that project cannot skip, and the one nothing else here
+      # exercises. Kept at the version dist-workspace.toml records, so CI
+      # tests the same dist the generated project will pin.
+      - name: Install dist
+        env:
+          DIST_VERSION: 0.32.0
+        run: |
+          curl --proto '=https' --tlsv1.2 -LsSf \
+            "https://github.com/axodotdev/cargo-dist/releases/download/v${DIST_VERSION}/cargo-dist-installer.sh" | sh
+
+      # The tools above are installed for the generated project's gate, which
+      # makes running them here free — and this repository is the one place
+      # they can catch a misspelling or a mangled table before it is copied
+      # into everybody else's.
+      - name: Formatting and spelling
+        run: |
+          taplo fmt --check
+          typos
+
+      # The one run where nothing may skip: every optional tool above is
+      # installed, so a skip here means a test silently stopped running.
+      - name: Test generation
+        # `shell: bash` for the pipefail the default shell does not set — a
+        # pipe into `tee` otherwise reports the exit status of `tee`, and the
+        # suite could fail without failing the job.
+        shell: bash
+        run: |
+          python -m unittest -v tests/test_template.py 2>&1 | tee results.txt
+          if grep -q "skipped=" results.txt; then
+            echo "::error::a test skipped, but every optional tool is installed here"
+            exit 1
+          fi
+
+  # Workflows are the one part of this repository that nothing else compiles,
+  # type-checks or runs before it reaches main. Three questions, none of which
+  # answers another: actionlint parses them and the shell inside them, zizmor
+  # asks whether they are safe, and the pin check asks whether an external
+  # action can change under us between two runs of the same commit.
+  #
+  # zizmor and the pin check run over `template/` too, which is where these
+  # findings would otherwise be copied out into everybody else's repository.
+  # actionlint covers `template/` from the test suite instead, against a
+  # rendered project — where the `./`-relative action paths it verifies
+  # actually resolve.
+  workflows:
+    name: Workflow syntax
+    runs-on: ubuntu-latest
+    # zizmor's online audits authenticate with the plain GH_TOKEN passed
+    # below; nothing here needs more than reading the repository.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSfL \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            | tar -xz actionlint
+
+      - name: Lint
+        run: ./actionlint -color
+
+      - uses: taiki-e/install-action@b27e114ddbae5cc01df19a22cf70a124d5177567 # v2.86.0
+        with:
+          tool: zizmor
+
+      - name: Audit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: zizmor --persona=regular --min-severity=medium .
+
+      # A tag is a name the publisher can move; a commit is not. Local actions
+      # (`./...`) are this repository's own and carry no `@ref` to pin.
+      - name: Every external action is pinned to a commit
+        run: |
+          unpinned="$(grep -rhoE 'uses: [^.][^ ]*@[^ ]+' .github/ template/.github/ | grep -vE '@[0-9a-f]{40}$' || true)"
+          if [ -n "$unpinned" ]; then
+            echo "::error::pin these to a commit SHA, not a tag:"
+            echo "$unpinned"
+            exit 1
+          fi
+
+      # And pinned to the *same* commit everywhere. Dependabot reaches this
+      # repository's own workflows and the composite action, but never the
+      # workflows under `template/` — a custom directory is searched for an
+      # `action.yml`, not for workflow files — so its pull request bumps half
+      # the copies of a pin. This is what turns that half into a red check
+      # instead of a drift nobody sees.
+      - name: Every action is pinned to one commit everywhere
+        run: |
+          conflicting="$(grep -rhoE 'uses: [^.][^ ]*@[0-9a-f]{40}' .github/ template/.github/ | sort -u | sed -E 's/@[0-9a-f]{40}$//' | sort | uniq -d)"
+          if [ -n "$conflicting" ]; then
+            echo "::error::pinned to different commits in different files — update them together:"
+            echo "$conflicting"
+            exit 1
+          fi

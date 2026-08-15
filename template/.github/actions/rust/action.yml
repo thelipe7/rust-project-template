@@ -1,0 +1,37 @@
+name: Rust
+description: The toolchain, the build cache and any cargo tools a job needs.
+
+# One place, because five workflows needed the same three steps and a setup
+# that drifts between them is a job that passes for a reason none of the
+# others share.
+
+inputs:
+  tools:
+    description: Cargo tools to install, as taiki-e/install-action names them.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    # Installs the toolchain pinned in rust-toolchain.toml. Before the cache,
+    # which keys on the Rust version it finds.
+    - run: rustup toolchain install
+      shell: bash
+
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      with:
+        # Bump to walk away from a poisoned lineage: this action never
+        # overwrites a key it restored in full, so a bad entry persists until
+        # the prefix changes.
+        prefix-key: v1-rust
+        # Only the default branch writes. A pull request's cache is scoped to
+        # its own ref, so nothing else can read what it saves — it only spends
+        # the cache budget and evicts entries every other run lives on. A pull
+        # request reads main's and leaves it alone.
+        save-if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+
+    - if: inputs.tools != ''
+      uses: taiki-e/install-action@b27e114ddbae5cc01df19a22cf70a124d5177567 # v2.86.0
+      with:
+        tool: ${{ inputs.tools }}

@@ -1,0 +1,28 @@
+# nextest gives each test its own process, where `cargo test` runs them as
+# threads in one binary: a test that mutates the environment, working
+# directory or signal handlers stops being every other test's problem, and a
+# segfault takes down one process instead of the run.
+#
+# Doctests are the one thing nextest does not run, which is why
+# `cargo xtask test` runs `cargo test --doc` alongside it.
+
+[profile.default]
+# The failure twice: once where it happened, and once collected at the end,
+# because by then the interesting one scrolled away.
+failure-output = "immediate-final"
+status-level = "fail"
+# A test that has not finished in a minute is hung, not slow — and a hung test
+# otherwise sits until the runner's own timeout and reports nothing. Four
+# periods before termination leaves room for a genuinely slow one to say so
+# first.
+slow-timeout = { period = "60s", terminate-after = 4 }
+
+# Active only where something names it: .github/workflows/ci.yml sets
+# `NEXTEST_PROFILE=ci`, and nothing else does.
+[profile.ci]
+# One run should report every failure, not the first: the second one is what
+# says whether the change broke one thing or everything.
+fail-fast = false
+# No `retries`. A test that passes on the second attempt is a test nobody can
+# trust, and hiding that here is how it stays.
+final-status-level = "flaky"

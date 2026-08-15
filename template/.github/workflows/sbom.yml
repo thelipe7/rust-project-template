@@ -1,0 +1,58 @@
+name: SBOM
+
+# Called by release.yml, which dist generates from `global-artifacts-jobs` in
+# dist-workspace.toml. It runs after the binaries are built and before `host`,
+# which waits on it, collects every `artifacts-*` upload and attaches the lot
+# to the release.
+#
+# A bill of materials is what answers "was the thing we shipped affected" on
+# the day an advisory lands, without rebuilding it to find out.
+#
+# This exists instead of dist's own `cargo-cyclonedx = true`: that step builds
+# the same documents and then uploads them from
+# `${{ steps.cargo-cyclonedx.output.paths }}` — and `output` is not a context
+# GitHub resolves, so it expands to nothing and the documents never leave the
+# runner.
+on:
+  workflow_call:
+    inputs:
+      plan:
+        description: The dist manifest for this release, passed by release.yml.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  sbom:
+    name: Bill of materials
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # cargo-cyclonedx reads the dependency graph through Cargo, so it needs
+      # a toolchain.
+      - uses: ./.github/actions/rust
+
+      - uses: taiki-e/install-action@b27e114ddbae5cc01df19a22cf70a124d5177567 # v2.86.0
+        with:
+          tool: cargo-cyclonedx
+
+      - name: Describe every crate in the workspace
+        run: |
+          cargo cyclonedx -v
+          mkdir -p sbom
+          find . -name '*.cdx.xml' -exec mv '{}' sbom/ ';'
+          ls -l sbom
+
+      # `artifacts-` prefix on purpose: `host` fetches `artifacts-*` and hands
+      # what it finds to the release.
+      - name: Upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: artifacts-sbom
+          path: sbom/
+          if-no-files-found: error

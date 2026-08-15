@@ -1,0 +1,29 @@
+name: Feature request
+description: Propose a concrete improvement to the template.
+title: "feat: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: User need
+      description: What problem would this solve, and for whom?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome
+      description: >-
+        Describe what a generated project would have that it does not have
+        today, including alternatives considered.
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Does this need a new question?
+      description: >-
+        Every question is asked of every person generating a project and none
+        carries a default, so a new one is a cost paid by everybody. Say why
+        this cannot be decided once, here, for everyone.

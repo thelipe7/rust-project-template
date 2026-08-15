@@ -1,0 +1,7 @@
+# What a fuzzing session leaves behind. The corpus is worth keeping between
+# runs, but it is generated data, not source — share one deliberately as a
+# seed corpus, not by habit through a commit.
+target
+corpus
+artifacts
+coverage

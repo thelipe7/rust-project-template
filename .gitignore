@@ -1,0 +1,24 @@
+__pycache__/
+*.py[cod]
+.venv/
+
+# Editors and IDEs. These belong in a global gitignore, but a contributor
+# without one should not have to learn that in a pull request review.
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+\#*\#
+.\#*
+
+# What the operating system's file browser leaves behind.
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/

@@ -1,0 +1,38 @@
+version: 2
+updates:
+  # Grouped for a short review queue: one pull request for the week's minor
+  # and patch bumps, and a separate one for each major — the only kind worth
+  # reading individually. The cap keeps a busy week from undoing that.
+  # Security fixes ignore all of this and arrive immediately.
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    # The cooldown is the gap in which a compromised release is noticed and
+    # yanked before a bot proposes merging it — and since 2026-02-13 the only
+    # guaranteed notice of a crate removed for malware is a RustSec advisory,
+    # which the daily `cargo deny` run reads. Security updates ignore the
+    # cooldown and still arrive immediately.
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      cargo-minor-and-patch:
+        update-types: [minor, patch]
+  # Two directories, because `/` means `.github/workflows` and nothing else —
+  # the composite action holds pins of its own and has to be named to be
+  # watched.
+  - package-ecosystem: github-actions
+    directories:
+      - "/"
+      - "/.github/actions/rust"
+    schedule:
+      interval: weekly
+    # Same cooldown rationale as the cargo ecosystem above; security updates
+    # still arrive immediately.
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ["*"]

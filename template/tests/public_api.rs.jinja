@@ -1,0 +1,10 @@
+//! What a consumer can reach, exercised the way a consumer reaches it.
+//!
+//! Tests live here rather than beside the code whenever both would work: a
+//! `tests/` file compiles as a separate crate, so it can only touch the
+//! public surface, and a change that breaks a consumer breaks this first.
+
+#[test]
+fn the_package_reports_the_name_it_was_generated_under() {
+    assert_eq!({{ project_name | replace("-", "_") }}::package_name(), "{{ project_name }}");
+}

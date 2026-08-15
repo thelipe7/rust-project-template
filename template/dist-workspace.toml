@@ -1,0 +1,108 @@
+# What `dist` builds and ships: an archive per target, plus the installer
+# scripts that fetch the right one.
+#
+# `.github/workflows/release.yml` is generated from this file: after changing
+# anything below, run `dist generate` and commit the result.
+# `dist generate --check` reports when the two have drifted.
+#
+# `dist generate`, not `dist init`: `init` rewrites this file from its own
+# template and deletes every comment in it, including the reasons recorded
+# beside each setting below. If you ever do run it, recover with
+# `git checkout` on this file, followed by `dist generate`.
+#
+# Binaries are built with the `dist` profile in Cargo.toml — fat LTO, one
+# codegen unit — rather than the everyday `release` profile.
+
+[workspace]
+members = ["cargo:."]
+
+[dist]
+# dist records its own version here, so CI builds the release with the same
+# one this configuration was written for.
+cargo-dist-version = "0.32.0"
+ci = ["github"]
+hosting = "github"
+# A curl-sh script for unixy systems and an irm-iex one for Windows. Adding
+# "homebrew", "msi" or "npm" means taking on the tap, the signing, or the
+# registry account each of them needs.
+installers = ["shell", "powershell"]
+install-path = "CARGO_HOME"
+install-updater = false
+# Linux, macOS and Windows, each on x86_64 and aarch64. Every target added is
+# another build to keep green, and these are the ones somebody is actually on.
+#
+# Linux appears twice on purpose: a glibc binary refuses to start on any
+# distribution older than the runner that built it — the single most common
+# complaint about a Rust release — while a musl binary is statically linked
+# and starts anywhere. Ship the fast one and the portable one.
+#
+# Every one of them is built on a machine of its own architecture — see the
+# runner table below for the one that needs saying so.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-unknown-linux-musl",
+    "aarch64-unknown-linux-musl",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc",
+]
+
+# Embeds the dependency tree into each binary, so `cargo audit bin` can
+# answer for a downloaded artifact long after nobody can say which commit
+# built it. Costs a few kilobytes and survives stripping.
+cargo-auditable = true
+# What someone needs to check that a download is the file this repository
+# built, and to build it again themselves.
+checksum = "sha256"
+source-tarball = true
+github-attestations = true
+# A release is a decision, not a consequence of pushing a tag: this trades the
+# tag-push trigger for a `workflow_dispatch` form that dry-runs by default.
+dispatch-releases = true
+
+# Two hand-written workflows dist calls, rather than hand edits to the file
+# dist writes — an edit to the generated workflow dies at the next
+# regeneration; anything expressed here survives it.
+#
+# `release-gate` runs in the plan phase, which every later job needs, so the
+# `release` environment it sits behind is asked about before a single
+# artifact is built. `sbom` runs in the global-artifacts phase and uploads
+# under an `artifacts-*` name — the prefix `host` collects and attaches to
+# the release.
+plan-jobs = ["./release-gate"]
+global-artifacts-jobs = ["./sbom"]
+
+# Everything above is a `[dist]` key and everything below is a table of its
+# own — the order TOML requires: a bare key after a table header belongs to
+# that table, not back to `[dist]`.
+
+# Left to itself, dist cross compiles aarch64 Windows with cargo-xwin in a
+# Linux container — a default from before GitHub offered an ARM Windows
+# machine. It offers one now, so the binary is built by the architecture that
+# will run it, like every other target here.
+[dist.github-custom-runners]
+aarch64-pc-windows-msvc = "windows-11-arm"
+
+# The linker and startup files a musl target needs on the runner building it,
+# and the only system package this build asks for.
+#
+# No `version` key. In this long form `'*'` is taken literally and dist
+# emits `apt-get install musl-tools=*`, which apt rejects. Leaving the key
+# out is how the long form says "any".
+[dist.dependencies.apt]
+musl-tools = { targets = [
+    "x86_64-unknown-linux-musl",
+    "aarch64-unknown-linux-musl",
+] }
+
+# Every external action by immutable commit, which is the rule the
+# hand-written workflows follow and which CI enforces on all of them. dist
+# writes floating tags otherwise — and a floating tag in the one workflow that
+# signs and uploads artifacts is the supply chain.
+[dist.github-action-commits]
+"actions/checkout" = "3d3c42e5aac5ba805825da76410c181273ba90b1"          # v7.0.1
+"actions/upload-artifact" = "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"   # v7.0.1
+"actions/download-artifact" = "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c" # v8.0.1
+"actions/attest" = "1e69f48acb82d1966a394da916b4c1698aa569d6"            # v4.2.2

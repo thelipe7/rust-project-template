@@ -1,0 +1,5 @@
+//! Compiles against {{ project_name }}'s public surface, from outside it.
+
+fn main() {
+    println!("{}", {{ project_name | replace("-", "_") }}::package_name());
+}

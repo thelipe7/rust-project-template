@@ -1,0 +1,35 @@
+# release-plz in two halves. `.github/workflows/release-plz.yml` runs the
+# `release-pr` command on every push to main and keeps a pull request open
+# that bumps the version and writes the changelog; merging it is the decision.
+{% if project_kind == "published_library" -%}
+# `.github/workflows/release.yml` then runs the `release` command, which is
+# what carries the decision out.
+{% else -%}
+# Nothing runs the `release` command: `dist` is dispatched by hand with the
+# tag to cut, which is what makes shipping a decision rather than a
+# consequence of a merge. See dist-workspace.toml.
+{% endif -%}
+[workspace]
+changelog_path = "./CHANGELOG.md"
+changelog_update = true
+pr_branch_prefix = "release-plz-"
+pr_labels = ["release"]
+{% if project_kind == "published_library" %}
+publish = true
+# The GitHub release is created alongside the crates.io one, from the same
+# changelog entry.
+git_release_enable = true
+# The public API is compared against the released baseline before a version is
+# proposed, so a breaking change cannot land under a patch bump.
+semver_check = true
+{% else %}
+# Nothing here goes to a registry. Spelled out rather than inferred from
+# `publish = false` in Cargo.toml, because a release that silently does
+# nothing and a release that deliberately does nothing look identical.
+publish = false
+# `dist` creates the GitHub release, because it is what has the binaries to
+# attach to it. Two things creating one release would race.
+git_release_enable = false
+# No released baseline to compare a public API against.
+semver_check = false
+{% endif -%}

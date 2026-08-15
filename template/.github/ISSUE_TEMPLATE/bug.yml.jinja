@@ -1,0 +1,41 @@
+{% if project_kind == "published_library" -%}
+{% set reproduction = "The smallest program that shows the problem, and the exact commands that build and run it." -%}
+{% set environment = "The version of this crate, the Rust version that compiled it (`rustc -V`), and the operating system and architecture." -%}
+{% else -%}
+{% set reproduction = "The exact steps that produce the problem, in order, starting from a state someone else can reach." -%}
+{% set environment = "The version of " ~ project_name ~ " you are running, the operating system and architecture, and how it was installed." -%}
+{% endif -%}
+name: Bug report
+description: Report a reproducible problem.
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Search existing issues and discussions before reporting a bug.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: {{ reproduction }}
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: {{ environment }}
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      render: shell

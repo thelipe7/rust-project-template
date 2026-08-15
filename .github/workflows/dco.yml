@@ -1,0 +1,43 @@
+name: DCO
+
+# CONTRIBUTING requires a `Signed-off-by` trailer on every commit — the
+# Developer Certificate of Origin, and the only thing this project asks a
+# contributor to agree to. A requirement nothing checks is a request, so this
+# checks it.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  sign-off:
+    name: Every commit is signed off
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The full history, because the check walks base..head.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Signed off *by its author*: a trailer naming somebody else certifies
+      # nothing about the person who wrote the commit.
+      - name: Check the trailer on each commit
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          unsigned=0
+          # `--no-merges`: a merge commit carries a message nobody wrote, and
+          # the rebase this repository merges by drops it anyway.
+          for commit in $(git rev-list --no-merges "$BASE..$HEAD"); do
+            author="$(git show --no-patch --format='%ae' "$commit")"
+            signers="$(git show --no-patch --format='%(trailers:key=Signed-off-by,valueonly)' "$commit")"
+            if ! printf '%s' "$signers" | grep -qiF "<$author>"; then
+              subject="$(git show --no-patch --format='%s' "$commit")"
+              echo "::error::$commit ($subject) carries no Signed-off-by for $author — amend it with 'git commit -s --amend'"
+              unsigned=1
+            fi
+          done
+          exit "$unsigned"
