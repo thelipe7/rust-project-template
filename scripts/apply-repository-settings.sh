@@ -72,31 +72,34 @@ LABELS=(
 # the pull request's own status; a required rule that deadlocks is a rule
 # someone disables.
 #
-# The six platforms are listed individually because that is what claiming to
+# The five platforms are listed individually because that is what claiming to
 # support them means: a change that breaks aarch64 Windows does not merge.
 #
 # `strict: false` — a required rebase onto main before every merge serialises
 # the queue for a guarantee that a linear history already mostly provides.
 #
-# The checks required depend on which repository this is. A generated project
-# reports the gate, the platforms, coverage and the workflow audit; the
-# template repository itself reports only its test suite and the same audit —
-# and requiring a check that never reports blocks every merge. A copier.yml
-# at the root is what tells them apart: only the template carries one.
+# Only the checks every generated project reports are named. `linux-musl` and
+# `package` exist for some answers and not others, and `coverage` runs on the
+# default branch alone — requiring a check that never reports on a pull
+# request blocks every merge, so those three block nothing and are read.
+#
+# The checks required also depend on which repository this is: the template
+# itself reports only its test suite and the workflow audit. A copier.yml at
+# the root is what tells them apart — only the template carries one.
 ruleset_payload() {
 	local repo="$1" contexts
 	if gh api --silent "repos/$repo/contents/copier.yml" >/dev/null 2>&1; then
 		contexts='{ "context": "template" },
           { "context": "Workflow syntax" }'
 	else
-		contexts='{ "context": "rust" },
+		contexts='{ "context": "lint" },
+          { "context": "features" },
+          { "context": "test" },
           { "context": "linux-aarch64" },
-          { "context": "linux-musl" },
           { "context": "macos-aarch64" },
           { "context": "macos-x86_64" },
           { "context": "windows-aarch64" },
           { "context": "windows-x86_64" },
-          { "context": "coverage" },
           { "context": "Workflow syntax" }'
 	fi
 	cat <<-JSON

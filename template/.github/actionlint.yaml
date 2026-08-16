@@ -1,0 +1,17 @@
+# `.github/workflows/release.yml` is not written here. `dist generate` writes
+# it from dist-workspace.toml, and regenerating it is how it stays true to the
+# configuration it reads — so a finding in it is a finding about dist's code
+# generator, reported against a file nobody edits and everybody overwrites.
+#
+# Two shellcheck rules, and only in that file. SC2086 is an unquoted expansion
+# and SC2129 a run of redirects to one file; dist emits both, in shell it
+# writes itself from values it controls. Every other workflow here is
+# hand-written and stays under the full check.
+#
+# Scoped this narrowly on purpose: `paths` entries are globs, and a wider one
+# would silence the same rules in a workflow somebody does edit.
+paths:
+  .github/workflows/release.yml:
+    ignore:
+      - 'shellcheck reported issue in this script: SC2086:.+'
+      - 'shellcheck reported issue in this script: SC2129:.+'

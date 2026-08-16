@@ -1,0 +1,42 @@
+name: Package
+
+# What `cargo publish` would upload, built again from the packaged copy, and a
+# fixture that depends on this crate the way a stranger would. Both questions
+# are only ever answered wrong at publish time, when it is too late to be told
+# — so they are asked on every change instead.
+#
+# Its own workflow rather than a job in ci.yml, because it builds a tree of its
+# own: the packaged copy and the consumer fixture share no artifacts with the
+# workspace build, so bundling it with another job only makes that job wait.
+#
+# The branch globs match ci.yml's, and for its reason: a pull request opened by
+# automation with GITHUB_TOKEN gets no `pull_request` runs, so the branch push
+# is where its commit gets checked.
+on:
+  pull_request:
+  push:
+    branches: [main, "release-plz-**", "automation/**"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # See ci.yml, where the same setting is explained at length.
+  RUSTFLAGS: -C debuginfo=line-tables-only
+
+concurrency:
+  group: package-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/rust
+
+      - run: cargo xtask package
