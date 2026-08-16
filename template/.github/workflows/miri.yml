@@ -38,4 +38,17 @@ jobs:
       - name: Install nightly with Miri
         run: rustup toolchain install nightly --component miri --profile minimal
 
-      - run: cargo +nightly miri test --workspace --all-features --locked
+      # `--lib` — the unit tests, where the `unsafe` and the tests written
+      # against it live. An integration test drives the public API through
+      # whatever the dependency tree does underneath, and interpreting that is
+      # both the slow part and the part that reports on somebody else's code:
+      # an async runtime polling a future through a shared reference is the
+      # usual finding, and it is a finding about the aliasing model, not about
+      # this crate.
+      #
+      # Which is the other half of it. Miri defaults to Stacked Borrows, a
+      # stricter model than the one much real code was written against; Tree
+      # Borrows is the newer, more permissive one. If a finding here looks
+      # like a false positive, re-run it with
+      # `MIRIFLAGS=-Zmiri-tree-borrows` before believing either answer.
+      - run: cargo +nightly miri test --workspace --all-features --locked --lib
