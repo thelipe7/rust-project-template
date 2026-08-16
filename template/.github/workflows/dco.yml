@@ -33,6 +33,11 @@ jobs:
           # the rebase this repository merges by drops it anyway.
           for commit in $(git rev-list --no-merges "$BASE..$HEAD"); do
             author="$(git show --no-patch --format='%ae' "$commit")"
+            # The DCO certifies a person's right to submit the change. A
+            # GitHub App bot — Dependabot bumping a pin — has no such right
+            # to certify and never signs, and a check that is always red on
+            # bot pull requests teaches people to stop reading it.
+            case "$author" in *"[bot]@users.noreply.github.com") continue ;; esac
             signers="$(git show --no-patch --format='%(trailers:key=Signed-off-by,valueonly)' "$commit")"
             if ! printf '%s' "$signers" | grep -qiF "<$author>"; then
               subject="$(git show --no-patch --format='%s' "$commit")"
