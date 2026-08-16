@@ -10,10 +10,26 @@ inputs:
     description: Cargo tools to install, as taiki-e/install-action names them.
     required: false
     default: ""
+  apt:
+    description: >-
+      Space-separated system packages a native dependency needs on Linux —
+      libfontconfig1-dev, libasound2-dev. Ignored on other runners, where the
+      names would not resolve anyway.
+    required: false
+    default: ""
 
 runs:
   using: composite
   steps:
+    - if: inputs.apt != '' && runner.os == 'Linux'
+      shell: bash
+      env:
+        APT: ${{ inputs.apt }}
+      run: |
+        read -ra packages <<< "$APT"
+        sudo apt-get update
+        sudo apt-get install --no-install-recommends -y "${packages[@]}"
+
     # Installs the toolchain pinned in rust-toolchain.toml. Before the cache,
     # which keys on the Rust version it finds.
     - run: rustup toolchain install
