@@ -24,7 +24,9 @@ ci = ["github"]
 hosting = "github"
 # A curl-sh script for unixy systems and an irm-iex one for Windows. Adding
 # "homebrew", "msi" or "npm" means taking on the tap, the signing, or the
-# registry account each of them needs.
+# registry account each of them needs — and "msi" fails before any of that:
+# dist refuses to generate the WiX sources unless each shipped binary's
+# manifest carries an `authors` field, which this template does not set.
 installers = ["shell", "powershell"]
 install-path = "CARGO_HOME"
 install-updater = false

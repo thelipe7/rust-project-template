@@ -4,6 +4,11 @@
 # `expect_used` is on, and the gate denies warnings — so without these two a
 # single `.expect()` inside a `#[test]` fails the build. Wrong answer: the
 # lint is about production paths; a test reports failure by panicking.
+#
+# Mind the edge: these cover `#[test]` functions and `#[cfg(test)]` modules,
+# and nothing else. A helper function in a `tests/` file, or a public fake
+# behind a feature, is outside them — those carry their own
+# `#[expect(clippy::expect_used, reason = "...")]`.
 allow-expect-in-tests = true
 allow-unwrap-in-tests = true
 

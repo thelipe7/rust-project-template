@@ -1,5 +1,11 @@
 # What `cargo deny check` enforces about the dependency tree, run by
 # `cargo xtask lint` and again on a schedule by `.github/workflows/security.yml`.
+#
+# The graph it checks is what ships: dev-dependencies stay outside it, so a
+# crate whose dependencies are all dev-dependencies is checked against a
+# near-empty graph and this file's license gate never gets asked. Their
+# advisories still arrive — the scheduled cargo-audit run reads the lockfile,
+# where every dependency appears.
 
 [advisories]
 version = 2
