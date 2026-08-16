@@ -115,10 +115,13 @@ jobs:
         with:
           tool: zizmor
 
+      # `--min-confidence=medium` matches what the generated project runs, and
+      # is explained there: the low-confidence audits are heuristics about
+      # intent rather than readings of the workflow.
       - name: Audit
         env:
           GH_TOKEN: ${{ github.token }}
-        run: zizmor --persona=regular --min-severity=medium .
+        run: zizmor --persona=regular --min-severity=medium --min-confidence=medium .
 
       # A tag is a name the publisher can move; a commit is not. Local actions
       # (`./...`) are this repository's own and carry no `@ref` to pin.

@@ -71,12 +71,20 @@ out in the generated project's own `CONTRIBUTING.md`.
 
 - **One gate.** `cargo xtask ci` — a compile, formatting for Rust and TOML,
   spelling, Clippy with warnings denied, `cargo deny`, `cargo machete`,
-  `cargo hack --each-feature`, nextest, the doctests and rustdoc. It is what
-  CI runs, it is required by the branch ruleset, and it passes on a project
-  generated a minute ago.
-- **Every platform it ships to.** The gate runs once on Linux, because most of
-  what it asks answers the same everywhere; compiling and testing then run on
-  Linux, macOS and Windows, on x86_64 and aarch64 each, plus a musl build.
+  `cargo hack --each-feature`, nextest, the doctests and rustdoc. It passes on
+  a project generated a minute ago.
+- **The same gate, in parallel, in CI.** One command locally, where a
+  developer wants one answer; one job per task there, where the tasks share no
+  results and running them in sequence means the slowest one starts last. The
+  ruleset requires `lint`, `features`, `test` and the platforms.
+- **Every platform it ships to.** The tasks whose answer is the same
+  everywhere run once on Linux; compiling and testing then run on Linux, macOS
+  and Windows, on x86_64 and aarch64 each — started immediately rather than
+  after the Linux gate, because waiting costs every green run the gate's whole
+  runtime. A musl build too, for the projects that can cross-compile to it.
+- **System dependencies named once.** A project that links `libfontconfig1-dev`
+  says so in `.github/system-packages`, which every Linux job reads — not as
+  an argument eight workflows repeat and every `copier update` has to merge.
 - **A reproducible first build.** `Cargo.lock` ships with the project, and
   every task passes `--locked`.
 - **Workflows that can be read.** CI, a daily advisory check, a DCO gate, a

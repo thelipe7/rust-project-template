@@ -20,40 +20,95 @@ env:
   # failure, not the first. A profile is only active where something names
   # it, and this is where CI names it.
   NEXTEST_PROFILE: ci
+  # Full debug info is the largest thing a CI build writes to disk, and
+  # nothing here reads it: no debugger attaches to a runner, and a backtrace
+  # needs line tables only. Left on, a workspace with a wide dependency tree
+  # fills the runner's disk before the gate finishes — and the error it fails
+  # with names whatever step happened to be running, not the debug info.
+  #
+  # Here rather than in Cargo.toml, so a developer's own builds keep the debug
+  # info a debugger needs. CI is the one place nothing does.
+  RUSTFLAGS: -C debuginfo=line-tables-only
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# The gate is `cargo xtask ci` split across runners. One command locally, where
+# a developer wants one answer; one job per task here, where the tasks do not
+# depend on each other and a runner waiting on the previous one is a runner
+# idle for as long as that one takes. Run in sequence, the slowest task decides
+# nothing and the sum decides everything.
+#
+# `check` and `lint` share a job because they share their build: clippy reuses
+# the artifacts `cargo check` just wrote, so together they cost what `check`
+# costs alone, and apart they cost it twice. `docs` rides along for the same
+# reason. Everything else builds its own tree and belongs somewhere else.
 jobs:
-  rust:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      # `cargo xtask ci` shells out to each of these; without them it fails on
-      # the missing subcommand rather than on the code.
+      # Each task shells out to these; without them it fails on the missing
+      # subcommand rather than on the code.
       - uses: ./.github/actions/rust
         with:
-          tools: cargo-deny,cargo-machete,cargo-hack,cargo-nextest,taplo,typos
+          tools: cargo-deny,cargo-machete,taplo,typos
 
-      - run: cargo xtask ci
+      - run: cargo xtask check
+      - run: cargo xtask lint
+      - run: cargo xtask docs
 
-  # The gate above runs once, on Linux: formatting, the dependency tree, the
-  # feature powerset and the docs answer the same everywhere, and asking six
-  # times buys six identical answers.
+  # One build of the workspace per feature, which is why it is not bundled
+  # with anything: whatever it shares a job with waits for all of them.
+  features:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/rust
+        with:
+          tools: cargo-hack
+
+      - run: cargo xtask features
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/rust
+        with:
+          tools: cargo-nextest
+
+      - run: cargo xtask test
+
+  # Formatting, the dependency tree, the feature powerset and the docs answer
+  # the same everywhere, and asking six times buys six identical answers — so
+  # the jobs above run on Linux only.
   #
   # Compiling and running the tests is the part that does differ — a path
   # separator, a `#[cfg(unix)]`, a dependency with no Windows story — so that
   # part runs on every platform this ships to, and only that part.
   #
+  # No `needs:`. Waiting for the Linux gate to go green before starting the
+  # other five machines adds the gate's whole runtime to every green run, to
+  # save runner minutes on the red ones — and a red run is where knowing
+  # whether Windows is also broken is worth most. `concurrency` above already
+  # cancels the runs a new push obsoletes, which is where the minutes actually
+  # go.
+  #
   # `windows-aarch64` is here because GitHub now rents an ARM Windows machine;
   # before it did, that target first ran on somebody's laptop.
   platforms:
     name: ${{ matrix.platform }}
-    needs: rust
     runs-on: ${{ matrix.runner }}
     strategy:
       # One red platform should not hide the other four. Knowing whether a
@@ -78,37 +133,20 @@ jobs:
       - run: cargo xtask check
       - run: cargo xtask test
 
-  # A musl binary is statically linked — what lets it start on a distribution
-  # older than the runner that built it — and it is where a dependency that
-  # assumes glibc stops compiling. Checked rather than tested: the question
-  # here is whether it builds at all.
-  musl:
-    name: linux-musl
-    needs: rust
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: ./.github/actions/rust
-
-      - name: Install the musl target and its linker
-        run: |
-          rustup target add x86_64-unknown-linux-musl
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y musl-tools
-
-      - run: cargo check --workspace --all-targets --all-features --locked --target x86_64-unknown-linux-musl
-
   # Coverage is reported, not enforced: a threshold is a number somebody
   # negotiates with rather than a defect it finds. The useful form is the
   # reviewer seeing which lines went untested, so the summary goes in the job
   # summary, where it is read, not only into an artifact.
   #
+  # On the default branch only. It is a third instrumented build of a
+  # workspace two jobs above have already built, for a number nothing blocks
+  # on — so it is worth its runner where the trend is read, and not worth one
+  # on every push to every branch.
+  #
   # xtask is excluded: it is build tooling, and counting it moves the number
   # without telling anybody anything.
   coverage:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -172,10 +210,17 @@ jobs:
       # `--persona=regular` leaves out the findings only worth arguing about;
       # a deliberate finding is silenced at the line with a
       # `# zizmor: ignore[audit-name]` comment carrying its reason.
+      #
+      # `--min-confidence=medium` because the low-confidence audits are
+      # heuristics about intent rather than readings of the workflow: the
+      # cache-poisoning audit fires on any `setup-` action that caches by
+      # default in a workflow that also runs on `push`, which describes most
+      # projects and almost none of the vulnerable ones. High-confidence
+      # findings still fail the build.
       - name: Audit
         env:
           GH_TOKEN: ${{ github.token }}
-        run: zizmor --persona=regular --min-severity=medium .
+        run: zizmor --persona=regular --min-severity=medium --min-confidence=medium .
 
       # A tag is a name the publisher can move; a commit is not. Local actions
       # (`./...`) are this repository's own and carry no `@ref` to pin.

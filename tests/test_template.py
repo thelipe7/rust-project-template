@@ -31,6 +31,12 @@ ANSWERS = {
     "copyright_year": "2026",
     "unsafe_policy": "deny",
     "clippy_pedantic": "true",
+    # A native dependency and the musl check are independent answers, and both
+    # are answered yes here for the same reason as the surfaces below: yes is
+    # the answer that generates something to check. The dedicated test renders
+    # the other way round.
+    "system_packages": "libfontconfig1-dev",
+    "musl_check": "true",
     # The opt-in verification surfaces, all on: the suite's job is to check
     # what the template can generate, and `yes` is the answer that generates
     # something to check. The opt-out is what the dedicated test renders.
@@ -113,6 +119,8 @@ class TemplateGenerationTests(unittest.TestCase):
             ".github/workflows/dco.yml",
             ".github/workflows/minimal-versions.yml",
             ".github/workflows/msrv.yml",
+            ".github/workflows/musl.yml",
+            ".github/workflows/package.yml",
             ".github/workflows/release-plz.yml",
             ".github/workflows/release.yml",
             ".github/workflows/scorecard.yml",
@@ -126,6 +134,7 @@ class TemplateGenerationTests(unittest.TestCase):
             "fuzz/.gitignore",
             ".github/ISSUE_TEMPLATE/bug.yml",
             ".github/PULL_REQUEST_TEMPLATE.md",
+            ".github/system-packages",
             ".gitignore",
             ".config/nextest.toml",
             "AGENTS.md",
@@ -198,9 +207,9 @@ class TemplateGenerationTests(unittest.TestCase):
                     check=True,
                 )
 
-                # And the lint task again with a dev-dependency in the tree:
-                # `cargo hack --no-dev-deps` hands cargo a manifest without
-                # that table, and the flags beside it must tolerate the
+                # And the feature and lint tasks again with a dev-dependency in
+                # the tree: `cargo hack --no-dev-deps` hands cargo a manifest
+                # without that table, and the flags beside it must tolerate the
                 # re-resolve. The skeleton has no dev-dependencies, which is
                 # exactly how an incompatible `--locked` once shipped
                 # unnoticed. itoa, because it has none of its own.
@@ -229,11 +238,12 @@ class TemplateGenerationTests(unittest.TestCase):
                     )
                 with open(generated / anchor, "a", encoding="utf-8") as file:
                     file.write(snippet)
-                subprocess.run(
-                    ["cargo", "xtask", "lint"],
-                    cwd=generated,
-                    check=True,
-                )
+                for task in ("lint", "features"):
+                    subprocess.run(
+                        ["cargo", "xtask", task],
+                        cwd=generated,
+                        check=True,
+                    )
 
     def test_all_supported_profile_combinations_render(self) -> None:
         for project_kind in ("published_library", "workspace_app"):
@@ -282,9 +292,14 @@ class TemplateGenerationTests(unittest.TestCase):
             (".github/workflows/release.yml", True),
             (".github/workflows/msrv.yml", True),
             (".github/workflows/minimal-versions.yml", True),
+            (".github/workflows/package.yml", True),
             ("fixtures/consumer/Cargo.toml", True),
             ("tests/public_api.rs", True),
             ("crates/README.md", False),
+            # An application is the kind whose release workflow is generated
+            # rather than written, and this is what tells actionlint not to
+            # report dist's shell style as though somebody could fix it.
+            (".github/actionlint.yaml", False),
             (".github/workflows/release-gate.yml", False),
             (".github/workflows/sbom.yml", False),
             (".github/workflows/dist-check.yml", False),
@@ -321,6 +336,34 @@ class TemplateGenerationTests(unittest.TestCase):
         self.assertNotIn("fuzz/Cargo.toml", application)
         self.assertIn(".github/workflows/scorecard.yml", application)
         self.assertIn(".github/workflows/mutants.yml", application)
+
+    def test_native_dependencies_are_declared_once_and_musl_is_optional(
+        self,
+    ) -> None:
+        """A native dependency is named in one file every CI job reads, rather
+        than as an argument each workflow repeats — eight call sites is eight
+        merge conflicts on the next `copier update`.
+
+        And musl is a question, because it is one a project can be unable to
+        answer: a dependency linked through `pkg-config` cannot be
+        cross-compiled against libraries installed for the runner's own
+        architecture, so the job would be permanently red rather than
+        informative.
+        """
+        declared = self.render(project_kind="workspace_app")
+        self.assertIn(
+            "libfontconfig1-dev",
+            (declared / ".github/system-packages").read_text(encoding="utf-8"),
+        )
+
+        declined = self.render(
+            project_kind="workspace_app",
+            system_packages="",
+            musl_check="false",
+        )
+        paths = self.paths_in(declined)
+        self.assertNotIn(".github/system-packages", paths)
+        self.assertNotIn(".github/workflows/musl.yml", paths)
 
     def test_the_license_files_are_the_ones_the_expression_names(self) -> None:
         """A project carries the text of every license it offers, and no other.
@@ -399,9 +442,18 @@ class TemplateGenerationTests(unittest.TestCase):
     def test_generated_workflows_pass_actionlint(self) -> None:
         """The workflows are shipped as text and never run before a project has
         them, so nothing here would notice a broken one until a real repository
-        did. Skipped rather than failed where actionlint is absent: the
-        template's own CI installs it, and a contributor without it should
-        still be able to run the suite."""
+        did.
+
+        An application's `.github/workflows/release.yml` is written by `dist
+        generate`, not shipped — so linting a project as generated lints every
+        workflow except the one nobody wrote, which is the one whose shell
+        style is not ours to fix. Generating it first is what makes this the
+        same question a real repository asks.
+
+        Skipped rather than failed where actionlint is absent: the template's
+        own CI installs it, and a contributor without it should still be able
+        to run the suite.
+        """
         if shutil.which("actionlint") is None:
             self.skipTest("actionlint is not installed")
 
@@ -411,6 +463,8 @@ class TemplateGenerationTests(unittest.TestCase):
                 # actionlint wants a repository to resolve `./`-relative
                 # actions and the default branch against.
                 self.git(generated, "init", "--initial-branch=main")
+                if project_kind == "workspace_app" and shutil.which("dist"):
+                    self.generate_release_workflow(generated)
                 subprocess.run(["actionlint"], cwd=generated, check=True)
 
     def test_every_action_in_a_generated_project_is_pinned_to_a_commit(self) -> None:
@@ -458,15 +512,7 @@ class TemplateGenerationTests(unittest.TestCase):
         generated = self.render(project_kind="workspace_app")
         # dist reads the workspace through git, and writes into `.github/`.
         self.git(generated, "init", "--initial-branch=main")
-        self.git(generated, "config", "user.name", "Project Test")
-        self.git(generated, "config", "user.email", "project@example.invalid")
-        self.git(generated, "config", "commit.gpgsign", "false")
-        self.git(generated, "add", ".")
-        self.git(generated, "commit", "-m", "feat: generate project")
-
-        subprocess.run(["dist", "generate"], cwd=generated, check=True)
-
-        release = generated / ".github/workflows/release.yml"
+        release = self.generate_release_workflow(generated)
         self.assertTrue(release.is_file(), "dist generate wrote no workflow")
         workflow = release.read_text(encoding="utf-8")
         # The two hand-written workflows dist was asked to call, in the phases
@@ -560,6 +606,20 @@ class TemplateGenerationTests(unittest.TestCase):
 
     def git(self, cwd: Path, *args: str) -> None:
         subprocess.run(["git", *args], cwd=cwd, check=True)
+
+    def generate_release_workflow(self, generated: Path) -> Path:
+        """Runs `dist generate` in an already-initialised repository.
+
+        dist reads the workspace through git and refuses a tree it cannot
+        describe, so the commit is part of the step rather than setup for it.
+        """
+        self.git(generated, "config", "user.name", "Project Test")
+        self.git(generated, "config", "user.email", "project@example.invalid")
+        self.git(generated, "config", "commit.gpgsign", "false")
+        self.git(generated, "add", ".")
+        self.git(generated, "commit", "-m", "feat: generate project")
+        subprocess.run(["dist", "generate"], cwd=generated, check=True)
+        return generated / ".github/workflows/release.yml"
 
 
 if __name__ == "__main__":
