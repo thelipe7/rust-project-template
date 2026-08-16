@@ -10,7 +10,7 @@ publish = true
 # What crates.io shows and searches. `cargo publish` refuses a package with no
 # description, and `clippy::cargo` fails the build when any of the rest is
 # missing.
-description = "{{ project_description }}"
+description = "{{ project_description | trim }}"
 repository = "https://github.com/{{ github_owner }}/{{ project_name }}"
 documentation = "https://docs.rs/{{ project_name }}"
 keywords = [{% for keyword in keywords.split(",") %}"{{ keyword | trim }}"{{ ", " if not loop.last }}{% endfor %}]
@@ -67,7 +67,7 @@ version = "0.1.0"
 edition = "2024"
 license = "{{ license_expression }}"
 publish = false
-description = "{{ project_description }}"
+description = "{{ project_description | trim }}"
 # Not for a registry — `dist` reads it to know where the releases it builds
 # are hosted, and refuses to initialise without it.
 repository = "https://github.com/{{ github_owner }}/{{ project_name }}"
