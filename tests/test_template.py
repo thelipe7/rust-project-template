@@ -7,6 +7,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import yaml
+
 
 TEMPLATE_ROOT = Path(__file__).resolve().parents[1]
 
@@ -603,6 +605,115 @@ class TemplateGenerationTests(unittest.TestCase):
                 "Template update marker.",
                 (destination / "CONTRIBUTING.md").read_text(encoding="utf-8"),
             )
+
+    def test_update_survives_an_answers_file_written_before_a_question(
+        self,
+    ) -> None:
+        """Every project generated before a question was added has an answers
+        file without it, and `copier update` renders `_exclude` against exactly
+        that file. An entry naming the answer directly raises `UndefinedError`
+        and the update dies — in every existing project at once, at the one
+        moment the template is meant to be doing its job.
+
+        Which is why each `_exclude` entry reading an answer reads it through
+        `| default`. This drops the two most recently added answers to check
+        that it does; a question added to `_exclude` later belongs in this
+        list.
+        """
+        added_since = ("system_packages", "musl_check")
+        with tempfile.TemporaryDirectory() as source_dir, tempfile.TemporaryDirectory() as destination_dir:
+            source = Path(source_dir)
+            destination = Path(destination_dir)
+            snapshot_without_git(source)
+
+            # v1.0.0 is this template as it was before the two questions: no
+            # question, no exclusion reading one, and none of the files those
+            # exclusions decide. Rebuilt rather than checked out, so the test
+            # keeps working when the previous release is no longer the one
+            # these questions arrived after.
+            configuration = source / "copier.yml"
+            current = configuration.read_text(encoding="utf-8")
+            before = yaml.safe_load(current)
+            for question in added_since:
+                del before[question]
+            before["_exclude"] = [
+                exclusion
+                for exclusion in before["_exclude"]
+                if not any(question in exclusion for question in added_since)
+            ]
+            configuration.write_text(yaml.safe_dump(before), encoding="utf-8")
+            for path in (
+                "template/.github/system-packages.jinja",
+                "template/.github/workflows/musl.yml",
+            ):
+                (source / path).unlink()
+
+            self.git(source, "init", "--initial-branch=main")
+            self.git(source, "config", "user.name", "Template Test")
+            self.git(source, "config", "user.email", "template@example.invalid")
+            self.git(source, "config", "commit.gpgsign", "false")
+            self.git(source, "add", ".")
+            self.git(source, "commit", "-m", "feat: initial template")
+            self.git(source, "tag", "v1.0.0")
+
+            arguments = []
+            for question, answer in (
+                ANSWERS | {"project_kind": "workspace_app"}
+            ).items():
+                if question in added_since:
+                    continue
+                arguments += ["--data", f"{question}={answer}"]
+            subprocess.run(
+                [
+                    "copier",
+                    "copy",
+                    "--trust",
+                    "--defaults",
+                    *arguments,
+                    str(source),
+                    str(destination),
+                ],
+                check=True,
+            )
+
+            self.git(destination, "init", "--initial-branch=main")
+            self.git(destination, "config", "user.name", "Project Test")
+            self.git(destination, "config", "user.email", "project@example.invalid")
+            self.git(destination, "config", "commit.gpgsign", "false")
+            self.git(destination, "add", ".")
+            self.git(destination, "commit", "-m", "feat: generate project")
+
+            # And v1.1.0 is the template as it stands, questions and all.
+            configuration.write_text(current, encoding="utf-8")
+            for path in (
+                "template/.github/system-packages.jinja",
+                "template/.github/workflows/musl.yml",
+            ):
+                shutil.copy2(TEMPLATE_ROOT / path, source / path)
+            self.git(source, "add", ".")
+            self.git(source, "commit", "-m", "feat: ask what the runners need")
+            self.git(source, "tag", "v1.1.0")
+            subprocess.run(
+                [
+                    "copier",
+                    "update",
+                    "--trust",
+                    "--defaults",
+                    "--data",
+                    "system_packages=libfontconfig1-dev",
+                    "--data",
+                    "musl_check=false",
+                ],
+                cwd=destination,
+                check=True,
+            )
+
+            # The answers arrived, and the files they decide followed them.
+            self.assertIn(
+                "libfontconfig1-dev",
+                (destination / ".github/system-packages").read_text(encoding="utf-8"),
+            )
+            self.assertFalse((destination / ".github/workflows/musl.yml").exists())
 
     def git(self, cwd: Path, *args: str) -> None:
         subprocess.run(["git", *args], cwd=cwd, check=True)

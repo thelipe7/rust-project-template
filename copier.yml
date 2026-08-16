@@ -41,8 +41,14 @@ _exclude:
   - "{% if project_kind == 'published_library' %}/.github/actionlint.yaml{% else %}/.copier-never-actionlint{% endif %}"
   # Both below are answers, not kinds: a project says whether it links system
   # libraries, and whether cross-compiling to musl is a question it can answer.
-  - "{% if not system_packages.strip() %}/.github/system-packages{% else %}/.copier-never-system-packages{% endif %}"
-  - "{% if not musl_check %}/.github/workflows/musl.yml{% else %}/.copier-never-musl{% endif %}"
+  #
+  # `default` because `copier update` renders these exclusions against the
+  # answers a project already has, and a question added since it was generated
+  # is not among them. Without a default, adding a question to `_exclude` makes
+  # every existing project's next update fail on an undefined name — which is
+  # the one moment the template is meant to be doing its job.
+  - "{% if not (system_packages | default('')).strip() %}/.github/system-packages{% else %}/.copier-never-system-packages{% endif %}"
+  - "{% if not (musl_check | default(false)) %}/.github/workflows/musl.yml{% else %}/.copier-never-musl{% endif %}"
   # Miri interprets a program to find undefined behavior, which is a question
   # only code allowed to write `unsafe` can raise.
   - "{% if unsafe_policy == 'deny' %}/.github/workflows/miri.yml{% else %}/.copier-never-miri{% endif %}"
