@@ -76,7 +76,7 @@ commit rather than the pull request:
   `revert`, `style` and `test`. Mark a breaking change with `!` before the
   colon — a break that does not say so ships as a patch.
 - Every commit carries a `Signed-off-by` line (`git commit -s`) under the
-  Developer Certificate of Origin 1.1, which CI checks commit by commit.
-  There is no CLA.
+  [Developer Certificate of Origin](https://developercertificate.org/),
+  which CI checks commit by commit. There is no CLA.
 - Hard-wrap commit body lines at 72 characters.
 - Atomic commits: one self-sufficient change per commit.
