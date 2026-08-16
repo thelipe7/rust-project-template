@@ -1,0 +1,52 @@
+name: musl
+
+# A musl binary is statically linked — what lets it start on a distribution
+# older than the runner that built it — and it is where a dependency that
+# assumes glibc stops compiling. Checked rather than tested: the question here
+# is whether it builds at all.
+#
+# Its own workflow rather than a job in ci.yml, because it is the one check
+# here a project can answer no to. A dependency that links a system library
+# through `pkg-config` cannot be cross-compiled by installing that library for
+# the runner's own architecture — the `.pc` file found would be the host's —
+# so a project with native dependencies needs a musl sysroot before this job
+# can mean anything, and until then it is a red check that says nothing.
+#
+# The branch globs match ci.yml's, and for its reason: a pull request opened by
+# automation with GITHUB_TOKEN gets no `pull_request` runs, so the branch push
+# is where its commit gets checked.
+on:
+  pull_request:
+  push:
+    branches: [main, "release-plz-**", "automation/**"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Full debug info is the largest thing a CI build writes to disk and nothing
+  # here reads it: no debugger attaches, and a backtrace needs line tables
+  # only. See ci.yml, where the same setting is explained at length.
+  RUSTFLAGS: -C debuginfo=line-tables-only
+
+concurrency:
+  group: musl-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  musl:
+    name: linux-musl
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/rust
+        with:
+          apt: musl-tools
+
+      - run: rustup target add x86_64-unknown-linux-musl
+
+      - run: cargo check --workspace --all-targets --all-features --locked --target x86_64-unknown-linux-musl
