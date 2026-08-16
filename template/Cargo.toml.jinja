@@ -1,5 +1,3 @@
-{% set lint_floor = (rust_version if project_kind == "published_library" else rust_toolchain).split(".") -%}
-{% set floor_has_1_97 = lint_floor[0] | int > 1 or (lint_floor[0] | int == 1 and lint_floor[1] | int >= 97) -%}
 {% if project_kind == "published_library" -%}
 [package]
 name = "{{ project_name }}"
@@ -123,16 +121,13 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(docsrs)'] }
 #
 #   unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }
 {% endif -%}
-{% if floor_has_1_97 -%}
-# `pub` on an item in a binary exports nothing — a binary has no consumers —
-# and the keyword hides dead code from the lint that would say so.
-dead_code_pub_in_binary = "warn"
-{% else -%}
-# Not enabled: `dead_code_pub_in_binary`, which catches `pub` items a binary
-# cannot export. It landed in 1.97 and an unknown lint name is itself a
-# warning — which this gate denies — so it stays off until the floor this
-# project builds against ({{ rust_version if project_kind == "published_library" else rust_toolchain }}) reaches 1.97.
-{% endif %}
+# Not enabled: `dead_code_pub_in_binary` (1.97), which catches `pub` items a
+# binary cannot export. Under `--all-targets` — which every xtask task passes
+# — a library's test harness counts as a binary to it, and every public item
+# of every library crate is reported as dead. Until the lint learns the
+# difference, enabling it costs a hundred false positives on the first
+# library this workspace grows.
+
 # One decision per group, made once. `priority = -1` is what lets the
 # individual lints below override the level set for the group they belong to.
 [workspace.lints.clippy]
@@ -177,7 +172,9 @@ if_then_some_else_none = "warn"
 map_err_ignore = "warn"
 redundant_type_annotations = "warn"
 renamed_function_params = "warn"
-semicolon_outside_block = "warn"
+# Not `semicolon_outside_block`: on a single-statement block it demands the
+# exact opposite of pedantic's `semicolon_if_nothing_returned`, and no
+# spelling satisfies both.
 too_long_first_doc_paragraph = "warn"
 undocumented_unsafe_blocks = "warn"
 unnecessary_safety_comment = "warn"
