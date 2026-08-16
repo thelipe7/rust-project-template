@@ -28,7 +28,7 @@ there.
 
 ## Where a change goes
 
-Four rules decide almost every question about this repository:
+Five rules decide almost every question about this repository:
 
 - **Every question is asked and none carries a default.** A default is an
   answer nobody gave, and it lands in a generated project looking like a
@@ -37,6 +37,12 @@ Four rules decide almost every question about this repository:
 - **Excludes come in pairs.** `_exclude` in `copier.yml` names a path to leave
   out, or — where the condition does not hold — a path that does not exist,
   which is how Copier spells "exclude nothing". Both halves or neither.
+- **An `_exclude` entry reads an answer through `| default`.** `copier update`
+  renders the exclusions against the answers a project already has, and a
+  question added since it was generated is not among them. Named directly, it
+  raises `UndefinedError` and the update dies — in every existing project at
+  once, at the one moment the template is meant to be doing its job. There is a
+  test for this, and a question added to `_exclude` belongs in its list.
 - **A file holding `{{ ... }}` needs the `.jinja` suffix.** Without it Copier
   copies the file verbatim and the placeholder ships. Nothing else notices: the
   result is valid YAML, valid Markdown, and wrong. There is a test for this.
