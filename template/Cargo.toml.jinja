@@ -103,7 +103,8 @@ unsafe_op_in_unsafe_fn = "warn"
 ambiguous_negative_literals = "warn"
 missing_debug_implementations = "warn"
 # An undocumented public item is an item nobody outside this repository can
-# use. Enforced here rather than at review, which forgets.
+# use. Enforced here rather than at review, which forgets. It reaches build
+# scripts too: a build.rs is a crate of its own and owes a `//!` header.
 missing_docs = "warn"
 redundant_imports = "warn"
 redundant_lifetimes = "warn"
