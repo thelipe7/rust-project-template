@@ -1,10 +1,15 @@
 //! The workspace's task runner.
 //!
 //! One entry point for everything a change has to pass — `cargo xtask
-//! <check|lint|test|docs|bench|{{ "package" if project_kind == "published_library" else "dist" }}|ci>` — so that what CI runs and what a
+//! <check|lint|features|test|docs|bench|{{ "package" if project_kind == "published_library" else "dist" }}|ci>` — so that what CI runs and what a
 //! developer runs cannot drift apart. Written in Rust rather than as a shell
 //! script or a Makefile because it is then built and checked by the same
 //! toolchain as the code it verifies.
+//!
+//! `ci` runs them in order, which is what a developer wants from one command.
+//! CI calls the tasks separately, one job each, because they do not depend on
+//! each other and a runner that waits for the previous one is a runner idle
+//! for as long as that one takes.
 
 use std::env;
 use std::ffi::OsStr;
@@ -116,27 +121,33 @@ fn run(task: &str) -> Result<(), String> {
             // Whether a declared dependency is used at all.
             // `unused_crate_dependencies` is allow-by-default, so clippy is
             // equally clean with the dependency and without it.
-            command("cargo", ["machete"])?;
-            // And whether each feature compiles on its own. A feature nobody
-            // builds in isolation stops compiling and nothing else notices,
-            // because every other command here builds `--all-features`.
-            // `--offline`, not `--locked`: `--no-dev-deps` hands cargo a
-            // temporary manifest without the dev-dependencies table, and
-            // `--locked` refuses that re-resolve outright — the two flags
-            // cannot coexist once a dev-dependency exists. Offline keeps the
-            // spirit: nothing new can be fetched.
-            command(
-                "cargo",
-                [
-                    "hack",
-                    "check",
-                    "--workspace",
-                    "--each-feature",
-                    "--no-dev-deps",
-                    "--offline",
-                ],
-            )
+            command("cargo", ["machete"])
         }
+        // Whether each feature compiles on its own. A feature nobody builds in
+        // isolation stops compiling and nothing else notices, because every
+        // other command here builds `--all-features`.
+        //
+        // Its own task rather than the tail of `lint`, because it is the one
+        // check here that builds the workspace once per feature: it shares no
+        // artifacts with anything above it and dominates whatever it is
+        // bundled with. Separate, CI gives it a runner of its own.
+        //
+        // `--offline`, not `--locked`: `--no-dev-deps` hands cargo a temporary
+        // manifest without the dev-dependencies table, and `--locked` refuses
+        // that re-resolve outright — the two flags cannot coexist once a
+        // dev-dependency exists. Offline keeps the spirit: nothing new can be
+        // fetched.
+        "features" => command(
+            "cargo",
+            [
+                "hack",
+                "check",
+                "--workspace",
+                "--each-feature",
+                "--no-dev-deps",
+                "--offline",
+            ],
+        ),
         "test" => {
             // Each test in its own process — see .config/nextest.toml.
             command(
@@ -214,6 +225,7 @@ fn run(task: &str) -> Result<(), String> {
             // does not build.
             run("check")?;
             run("lint")?;
+            run("features")?;
             run("test")?;
 {% if project_kind == "published_library" %}
             run("docs")?;
@@ -225,7 +237,7 @@ fn run(task: &str) -> Result<(), String> {
             run("docs")
 {% endif %}        }
         _ => Err(format!(
-            "unknown task `{task}`; expected check, lint, test, docs, bench, {{ "package" if project_kind == "published_library" else "dist" }}, or ci"
+            "unknown task `{task}`; expected check, lint, features, test, docs, bench, {{ "package" if project_kind == "published_library" else "dist" }}, or ci"
         )),
     }
 }
@@ -233,7 +245,7 @@ fn run(task: &str) -> Result<(), String> {
 fn main() -> ExitCode {
     let mut args = env::args().skip(1);
     let Some(task) = args.next() else {
-        eprintln!("usage: cargo xtask <check|lint|test|docs|bench|{{ "package" if project_kind == "published_library" else "dist" }}|ci>");
+        eprintln!("usage: cargo xtask <check|lint|features|test|docs|bench|{{ "package" if project_kind == "published_library" else "dist" }}|ci>");
         return ExitCode::from(2);
     };
 

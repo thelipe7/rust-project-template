@@ -8,7 +8,8 @@ reproducible defects or agreed work.
 ```bash
 cargo xtask ci        # the complete gate — everything below it, in this order
 cargo xtask check     # compile everything, tests and examples included
-cargo xtask lint      # fmt, taplo, typos, clippy denied, deny, machete, hack
+cargo xtask lint      # fmt, taplo, typos, clippy denied, deny, machete
+cargo xtask features  # every feature compiled on its own, one build each
 cargo xtask test      # tests, then the examples inside the documentation
 cargo xtask docs      # rustdoc, warnings denied
 {% if project_kind == "published_library" -%}
@@ -21,6 +22,11 @@ cargo xtask dist      # the shippable artifacts, built for this machine —
 
 `cargo xtask ci` is the gate CI runs, so there is nothing to remember to pass
 by hand. Run it before opening a pull request.
+
+CI runs the same tasks one job each rather than one after another: they share
+no results, so running them in sequence means the slowest one starts last.
+That is why a red build names a task — `lint`, `features`, `test` — and the
+command that reproduces it is that task, not the whole gate.
 
 The gate shells out to six tools; without them installed it fails on the
 missing command rather than on the code:
