@@ -313,7 +313,7 @@ ask_groups() {
 			printf '  [%s] %d  %-15s %s\n' "$mark" "$index" "$(group_title "$group")" "$(group_summary "$group")" >&2
 			index=$((index + 1))
 		done
-		printf '\nNumbers toggle, "a" all, "n" none, Enter applies: ' >&2
+		printf '\nPress Enter to apply the settings marked [x]. Numbers toggle one, "a" marks all, "n" none: ' >&2
 		read -r reply
 
 		case "$reply" in
@@ -326,8 +326,16 @@ ask_groups() {
 		n | N) selected=() ;;
 		*)
 			for choice in $reply; do
-				[[ "$choice" =~ ^[0-9]+$ ]] || continue
-				[ "$choice" -ge 1 ] && [ "$choice" -le ${#SETTING_GROUPS[@]} ] || continue
+				# Anything unrecognised gets said so, because a menu that
+				# silently redraws reads as a menu that ignored you.
+				if ! [[ "$choice" =~ ^[0-9]+$ ]]; then
+					printf '  "%s" is not an option — a number, "a", "n", or Enter to apply.\n' "$choice" >&2
+					continue
+				fi
+				if ! { [ "$choice" -ge 1 ] && [ "$choice" -le ${#SETTING_GROUPS[@]} ]; }; then
+					printf '  there is no setting %s — numbers run 1 to %d.\n' "$choice" ${#SETTING_GROUPS[@]} >&2
+					continue
+				fi
 				group="${SETTING_GROUPS[$((choice - 1))]}"
 				if contains "$group" "${selected[@]+"${selected[@]}"}"; then
 					local kept=()
