@@ -32,6 +32,7 @@ _exclude:
   - "{% if project_kind == 'published_library' %}/dist-workspace.toml{% else %}/.copier-never-dist{% endif %}"
   - "{% if project_kind == 'published_library' %}/.github/workflows/release-gate.yml{% else %}/.copier-never-gate{% endif %}"
   - "{% if project_kind == 'published_library' %}/.github/workflows/sbom.yml{% else %}/.copier-never-sbom{% endif %}"
+  - "{% if project_kind == 'published_library' %}/.github/workflows/dist-check.yml{% else %}/.copier-never-dist-check{% endif %}"
   # Miri interprets a program to find undefined behavior, which is a question
   # only code allowed to write `unsafe` can raise.
   - "{% if unsafe_policy == 'deny' %}/.github/workflows/miri.yml{% else %}/.copier-never-miri{% endif %}"

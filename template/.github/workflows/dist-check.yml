@@ -1,0 +1,46 @@
+name: dist
+
+# `.github/workflows/release.yml` is a generated file: dist writes it from
+# dist-workspace.toml. An edit to either one without regenerating does not
+# fail here and now — it fails the release run that would have used it, at
+# the worst possible moment to find out. This asks on every change instead.
+#
+# Before the first `dist generate` there is nothing to compare, so the check
+# says so and passes rather than handing a fresh project a gate it cannot
+# pass.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dist-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  drift:
+    name: The release workflow matches its configuration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The version dist-workspace.toml records, so the check runs the same
+      # dist that wrote the workflow.
+      - name: Install dist
+        run: |
+          version="$(grep -m1 'cargo-dist-version' dist-workspace.toml | cut -d'"' -f2)"
+          curl --proto '=https' --tlsv1.2 -LsSf \
+            "https://github.com/axodotdev/cargo-dist/releases/download/v${version}/cargo-dist-installer.sh" | sh
+
+      - name: Compare the generated workflow against dist-workspace.toml
+        run: |
+          if [ -f .github/workflows/release.yml ]; then
+            dist generate --check
+          else
+            echo "::notice::.github/workflows/release.yml is not generated yet — run 'dist generate' and commit it."
+          fi
