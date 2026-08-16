@@ -12,23 +12,43 @@ inputs:
     default: ""
   apt:
     description: >-
-      Space-separated system packages a native dependency needs on Linux —
-      libfontconfig1-dev, libasound2-dev. Ignored on other runners, where the
-      names would not resolve anyway.
+      Extra system packages this job alone needs on Linux, space-separated.
+      The packages the whole project needs belong in `.github/system-packages`,
+      which every job reads without being told; this is for the one job that
+      needs something more. Ignored on other runners, where the names would
+      not resolve anyway.
     required: false
     default: ""
 
 runs:
   using: composite
   steps:
-    - if: inputs.apt != '' && runner.os == 'Linux'
+    # A native dependency is a property of the project, not of the job that
+    # happened to trigger the link error — so the list lives in one file every
+    # job reads, rather than in an argument eight workflows have to repeat and
+    # a `copier update` has to merge eight times.
+    #
+    # Comments and blank lines are stripped so the file can say why a package
+    # is there, which is the question asked about it a year later.
+    - if: runner.os == 'Linux'
       shell: bash
       env:
-        APT: ${{ inputs.apt }}
+        EXTRA: ${{ inputs.apt }}
       run: |
-        read -ra packages <<< "$APT"
-        sudo apt-get update
-        sudo apt-get install --no-install-recommends -y "${packages[@]}"
+        packages=()
+        if [ -f .github/system-packages ]; then
+          while read -r line || [ -n "$line" ]; do
+            line="${line%%#*}"
+            read -ra words <<< "$line"
+            packages+=("${words[@]}")
+          done < .github/system-packages
+        fi
+        read -ra extra <<< "$EXTRA"
+        packages+=("${extra[@]}")
+        if [ "${#packages[@]}" -gt 0 ]; then
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y "${packages[@]}"
+        fi
 
     # Installs the toolchain pinned in rust-toolchain.toml. Before the cache,
     # which keys on the Rust version it finds.

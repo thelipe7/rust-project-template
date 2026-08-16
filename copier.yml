@@ -33,6 +33,16 @@ _exclude:
   - "{% if project_kind == 'published_library' %}/.github/workflows/release-gate.yml{% else %}/.copier-never-gate{% endif %}"
   - "{% if project_kind == 'published_library' %}/.github/workflows/sbom.yml{% else %}/.copier-never-sbom{% endif %}"
   - "{% if project_kind == 'published_library' %}/.github/workflows/dist-check.yml{% else %}/.copier-never-dist-check{% endif %}"
+  # Packaging and the consumer fixture are the library's release rehearsal.
+  - "{% if project_kind != 'published_library' %}/.github/workflows/package.yml{% else %}/.copier-never-package{% endif %}"
+  # Only an application ends up with a `release.yml` it did not write —
+  # `dist generate` produces that one, and this is the file that stops
+  # actionlint reporting dist's shell style as though somebody could fix it.
+  - "{% if project_kind == 'published_library' %}/.github/actionlint.yaml{% else %}/.copier-never-actionlint{% endif %}"
+  # Both below are answers, not kinds: a project says whether it links system
+  # libraries, and whether cross-compiling to musl is a question it can answer.
+  - "{% if not system_packages.strip() %}/.github/system-packages{% else %}/.copier-never-system-packages{% endif %}"
+  - "{% if not musl_check %}/.github/workflows/musl.yml{% else %}/.copier-never-musl{% endif %}"
   # Miri interprets a program to find undefined behavior, which is a question
   # only code allowed to write `unsafe` can raise.
   - "{% if unsafe_policy == 'deny' %}/.github/workflows/miri.yml{% else %}/.copier-never-miri{% endif %}"
@@ -304,6 +314,39 @@ clippy_pedantic:
     Enable clippy's `pedantic` group? It catches a great deal and argues about
     a great deal; a large test suite is where it usually starts costing more
     than it returns.
+
+# Asked once, written once. Every CI job on Linux reads
+# `.github/system-packages` before it builds, so a native dependency is
+# declared in one file rather than repeated in the eight workflows that would
+# otherwise each need telling — and a later `copier update` has one file to
+# merge instead of eight call sites to reconcile.
+system_packages:
+  type: str
+  help: |-
+    System packages this project's dependencies link against on Linux, space
+    separated (libfontconfig1-dev libasound2-dev). A crate whose name ends in
+    `-sys` almost always needs one. Empty if none do.
+  validator: >-
+    {% for entry in system_packages.split() %}
+    {% if not (entry | regex_search('^[a-z0-9][a-z0-9+.-]+$')) %}
+    '{{ entry }}' is not shaped like a Debian package name: lowercase letters,
+    digits, `+`, `.` and `-`.
+    {% endif %}
+    {% endfor %}
+
+musl_check:
+  type: bool
+  help: |-
+    Check on every change that the workspace cross-compiles to
+    x86_64-unknown-linux-musl? A statically linked binary starts on
+    distributions older than the runner that built it, and this is where a
+    dependency assuming glibc stops compiling.
+    {%- if system_packages.strip() %}
+    Answer no: this project links {{ system_packages.split() | join(', ') }},
+    and a library installed for the runner's own architecture cannot be linked
+    into a musl binary — `pkg-config` refuses, and the job is red until
+    somebody builds a musl sysroot.
+    {%- endif %}
 
 openssf_scorecard:
   type: bool
