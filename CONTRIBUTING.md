@@ -77,6 +77,6 @@ commit rather than the pull request:
   colon — a break that does not say so ships as a patch.
 - Every commit carries a `Signed-off-by` line (`git commit -s`) under the
   [Developer Certificate of Origin](https://developercertificate.org/),
-  which CI checks commit by commit. There is no CLA.
+  which CI checks commit by commit.
 - Hard-wrap commit body lines at 72 characters.
 - Atomic commits: one self-sufficient change per commit.
