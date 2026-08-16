@@ -198,6 +198,43 @@ class TemplateGenerationTests(unittest.TestCase):
                     check=True,
                 )
 
+                # And the lint task again with a dev-dependency in the tree:
+                # `cargo hack --no-dev-deps` hands cargo a manifest without
+                # that table, and the flags beside it must tolerate the
+                # re-resolve. The skeleton has no dev-dependencies, which is
+                # exactly how an incompatible `--locked` once shipped
+                # unnoticed. itoa, because it has none of its own.
+                subprocess.run(
+                    ["cargo", "add", "--dev", "itoa@1", "--package", "example-ui"],
+                    cwd=generated,
+                    check=True,
+                )
+                # Anchored where a dev-dependency is actually visible: an
+                # integration test for the library, a `#[cfg(test)]` module
+                # for the binary — `use` in plain binary code cannot see it.
+                if project_kind == "published_library":
+                    anchor, snippet = (
+                        "tests/public_api.rs",
+                        "\n// Anchors the dev-dependency for cargo-machete.\n"
+                        "use itoa as _;\n",
+                    )
+                else:
+                    anchor, snippet = (
+                        "apps/example-ui/src/main.rs",
+                        "\n// Anchors the dev-dependency for cargo-machete.\n"
+                        "#[cfg(test)]\n"
+                        "mod dev_dependency_anchor {\n"
+                        "    use itoa as _;\n"
+                        "}\n",
+                    )
+                with open(generated / anchor, "a", encoding="utf-8") as file:
+                    file.write(snippet)
+                subprocess.run(
+                    ["cargo", "xtask", "lint"],
+                    cwd=generated,
+                    check=True,
+                )
+
     def test_all_supported_profile_combinations_render(self) -> None:
         for project_kind in ("published_library", "workspace_app"):
             for unsafe_policy in ("deny", "scoped"):

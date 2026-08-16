@@ -120,6 +120,11 @@ fn run(task: &str) -> Result<(), String> {
             // And whether each feature compiles on its own. A feature nobody
             // builds in isolation stops compiling and nothing else notices,
             // because every other command here builds `--all-features`.
+            // `--offline`, not `--locked`: `--no-dev-deps` hands cargo a
+            // temporary manifest without the dev-dependencies table, and
+            // `--locked` refuses that re-resolve outright — the two flags
+            // cannot coexist once a dev-dependency exists. Offline keeps the
+            // spirit: nothing new can be fetched.
             command(
                 "cargo",
                 [
@@ -128,7 +133,7 @@ fn run(task: &str) -> Result<(), String> {
                     "--workspace",
                     "--each-feature",
                     "--no-dev-deps",
-                    "--locked",
+                    "--offline",
                 ],
             )
         }
