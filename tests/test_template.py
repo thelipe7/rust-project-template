@@ -287,6 +287,7 @@ class TemplateGenerationTests(unittest.TestCase):
             ("crates/README.md", False),
             (".github/workflows/release-gate.yml", False),
             (".github/workflows/sbom.yml", False),
+            (".github/workflows/dist-check.yml", False),
             ("dist-workspace.toml", False),
         ):
             self.assertEqual(
