@@ -1,10 +1,10 @@
 //! The workspace's task runner.
 //!
 //! One entry point for everything a change has to pass — `cargo xtask
-//! <check|lint|features|test|docs|bench|{{ "package" if project_kind == "published_library" else "dist" }}|ci>` — so that what CI runs and what a
-//! developer runs cannot drift apart. Written in Rust rather than as a shell
-//! script or a Makefile because it is then built and checked by the same
-//! toolchain as the code it verifies.
+//! <check|lint|features|test|docs|bench|{{ "package" if project_kind == "published_library" else "dist" }}|ci>` — so that what CI runs
+//! and what a developer runs cannot drift apart. Written in Rust rather than
+//! as a shell script or a Makefile because it is then built and checked by the
+//! same toolchain as the code it verifies.
 //!
 //! `ci` runs them in order, which is what a developer wants from one command.
 //! CI calls the tasks separately, one job each, because they do not depend on
