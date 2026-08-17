@@ -51,4 +51,18 @@ jobs:
       # Borrows is the newer, more permissive one. If a finding here looks
       # like a false positive, re-run it with
       # `MIRIFLAGS=-Zmiri-tree-borrows` before believing either answer.
-      - run: cargo +nightly miri test --workspace --all-features --locked --lib
+      #
+      # `-Zmiri-disable-isolation` because isolation is Miri refusing host
+      # syscalls so that a run is reproducible — not a check on the program.
+      # With it on, a unit test that creates a directory or reads a clock fails
+      # on `mkdir` or `statx` rather than on anything it asserts, and the job
+      # reports Miri's sandbox instead of this code. Nothing about undefined
+      # behavior is relaxed by turning it off.
+      #
+      # The tests it still cannot run are the ones reaching a foreign function
+      # Miri has no implementation for — a C library behind TLS is the usual
+      # one. Mark those `#[cfg_attr(miri, ignore = "...")]` at the test, saying
+      # which function stopped it. That is a limit no flag moves.
+      - env:
+          MIRIFLAGS: -Zmiri-disable-isolation
+        run: cargo +nightly miri test --workspace --all-features --locked --lib
