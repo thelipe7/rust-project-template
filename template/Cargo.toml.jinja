@@ -191,8 +191,15 @@ todo = "warn"
 # stdout takes that choice away, and there is no way to take it back.
 print_stdout = "warn"
 {% endif -%}
-# Not `unwrap_used`: the difference that matters is whether the reason is
-# written down, and `expect` is where it gets written.
+# Both, because both are the same decision: this cannot fail, and if it does
+# the process ends. What matters is that the reason is written down, and
+# `#[expect(clippy::unwrap_used, reason = "...")]` is where it gets written —
+# these two lints are what make somebody write it.
+#
+# Only one of them was on here once, and it was the wrong one: with `unwrap`
+# unlinted and `expect` denied, the construct carrying no reason at all was
+# the one that compiled.
+unwrap_used = "warn"
 expect_used = "warn"
 # Would fire on every structured-logging call site.
 literal_string_with_formatting_args = "allow"

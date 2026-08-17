@@ -1,16 +1,17 @@
 # Clippy's own configuration: the thresholds a few lints read, and the lists
 # the `disallowed_*` lints work from.
 #
-# `expect_used` is on, and the gate denies warnings — so without these two a
-# single `.expect()` inside a `#[test]` fails the build. Wrong answer: the
-# lint is about production paths; a test reports failure by panicking.
+# `unwrap_used` and `expect_used` are both on, and the gate denies warnings —
+# so without these two a single `.unwrap()` inside a `#[test]` fails the
+# build. Wrong answer: those lints are about production paths; a test reports
+# failure by panicking.
 #
 # Mind the edge: these cover `#[test]` functions and `#[cfg(test)]` modules,
 # and nothing else. A helper function in a `tests/` file, or a public fake
 # behind a feature, is outside them — those carry their own
-# `#[expect(clippy::expect_used, reason = "...")]`.
-allow-expect-in-tests = true
+# `#[expect(clippy::unwrap_used, reason = "...")]`.
 allow-unwrap-in-tests = true
+allow-expect-in-tests = true
 
 # Nothing else is set, on purpose. Every other entry here is a rule about
 # this project in particular, and the useful ones are discovered rather than
