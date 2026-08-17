@@ -222,12 +222,22 @@ private_intra_doc_links = "warn"
 invalid_html_tags = "warn"
 unescaped_backticks = "warn"
 {% if project_kind == "published_library" %}
-# The one profile a library sets. Cargo reads profiles from the workspace
-# root only, so consumers never see this — a library imposes no build
-# settings on them.
-#
+# The two profiles a library sets, and both are about developing it. Cargo
+# reads profiles from the workspace root only, so consumers never see these —
+# a library imposes no build settings on them.
+
+# Dependencies dominate a debug build's runtime and rarely change. This crate
+# stays at `opt-level = 0`, where a debugger can still follow it.
+[profile.dev.package."*"]
+opt-level = 3
+
 # Symbols and line numbers kept: a profiler that cannot name a function has
 # measured something nobody can act on.
+#
+# No `[profile.release]` above it. `bench` inherits release, so an
+# `overflow-checks = true` there would be measured by every benchmark and by
+# nothing that ships — and what ships is built with the consumer's profile
+# anyway.
 [profile.bench]
 debug = true
 strip = false
