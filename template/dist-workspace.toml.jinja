@@ -22,21 +22,21 @@ members = ["cargo:."]
 cargo-dist-version = "0.32.0"
 ci = ["github"]
 hosting = "github"
-# A curl-sh script for unixy systems and an irm-iex one for Windows. Adding
-# "homebrew", "msi" or "npm" means taking on the tap, the signing, or the
-# registry account each of them needs — and "msi" fails before any of that:
-# dist refuses to generate the WiX sources unless each shipped binary's
-# manifest carries an `authors` field, which this template does not set.
+# A curl-sh script for unixy systems and an irm-iex one for Windows: the two a
+# project can ship on the day it is generated. Every other installer has to be
+# paid for outside this file first — "homebrew" wants a tap and "npm" a
+# registry account, and "msi" wants an `authors` field in each shipped binary's
+# manifest, which dist refuses to write the WiX sources without, along with a
+# `[package.metadata.wix]` table whose upgrade and path GUIDs name the product
+# across versions and must never be regenerated once one has been released.
 installers = ["shell", "powershell"]
 install-path = "CARGO_HOME"
 install-updater = false
-# Linux, macOS and Windows, each on x86_64 and aarch64. Every target added is
-# another build to keep green, and these are the ones somebody is actually on.
-#
-# The list is the support promise written down, and it matches what CI
-# compiles and tests: every target here is a machine the `platforms` matrix in
-# ci.yml already runs on. A target shipped but never built is a release that
-# fails for a machine nobody checked.
+# Linux, macOS and Windows, each on x86_64 and aarch64. The list is the
+# support promise written down, and it matches what CI compiles and tests:
+# every target here is a machine the `platforms` matrix in ci.yml already runs
+# on. A target shipped but never built is a release that fails for a machine
+# nobody checked.
 {%- if musl_check %}
 #
 # Linux appears twice because this project answered yes to musl: a glibc
