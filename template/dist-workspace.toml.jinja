@@ -33,18 +33,33 @@ install-updater = false
 # Linux, macOS and Windows, each on x86_64 and aarch64. Every target added is
 # another build to keep green, and these are the ones somebody is actually on.
 #
-# Linux appears twice on purpose: a glibc binary refuses to start on any
-# distribution older than the runner that built it — the single most common
-# complaint about a Rust release — while a musl binary is statically linked
-# and starts anywhere. Ship the fast one and the portable one.
+# The list is the support promise written down, and it matches what CI
+# compiles and tests: every target here is a machine the `platforms` matrix in
+# ci.yml already runs on. A target shipped but never built is a release that
+# fails for a machine nobody checked.
+{%- if musl_check %}
+#
+# Linux appears twice because this project answered yes to musl: a glibc
+# binary refuses to start on any distribution older than the runner that built
+# it — the single most common complaint about a Rust release — while a musl
+# binary is statically linked and starts anywhere. Ship the fast one and the
+# portable one.
+#
+# Whether musl suits every binary here is a separate question from whether it
+# suits the project. A `-sys` dependency with no musl story — anything drawing
+# a window is the usual case — belongs to a package that overrides this list
+# with a `targets` of its own under `[package.metadata.dist]`.
+{%- endif %}
 #
 # Every one of them is built on a machine of its own architecture — see the
 # runner table below for the one that needs saying so.
 targets = [
     "x86_64-unknown-linux-gnu",
     "aarch64-unknown-linux-gnu",
+{%- if musl_check %}
     "x86_64-unknown-linux-musl",
     "aarch64-unknown-linux-musl",
+{%- endif %}
     "x86_64-apple-darwin",
     "aarch64-apple-darwin",
     "x86_64-pc-windows-msvc",
@@ -87,8 +102,14 @@ global-artifacts-jobs = ["./sbom"]
 [dist.github-custom-runners]
 aarch64-pc-windows-msvc = "windows-11-arm"
 
+{%- if musl_check %}
 # The linker and startup files a musl target needs on the runner building it,
-# and the only system package this build asks for.
+# and the only system package this build asks for. A dependency that compiles
+# C needs more than the linker: cc-rs finds `musl-gcc` for the x86_64 target
+# through a fallback of its own, and for aarch64 it asks for
+# `aarch64-linux-musl-gcc` and nothing else — so that one needs
+# `CC_aarch64_unknown_linux_musl` set, which is what `github-build-setup` is
+# for.
 #
 # No `version` key. In this long form `'*'` is taken literally and dist
 # emits `apt-get install musl-tools=*`, which apt rejects. Leaving the key
@@ -98,6 +119,7 @@ musl-tools = { targets = [
     "x86_64-unknown-linux-musl",
     "aarch64-unknown-linux-musl",
 ] }
+{%- endif %}
 
 # Every external action by immutable commit, which is the rule the
 # hand-written workflows follow and which CI enforces on all of them. dist
