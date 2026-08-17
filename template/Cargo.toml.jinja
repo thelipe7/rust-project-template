@@ -182,9 +182,10 @@ map_err_ignore = "warn"
 mod_module_files = "warn"
 redundant_type_annotations = "warn"
 renamed_function_params = "warn"
-# Not `semicolon_outside_block`: on a single-statement block it demands the
-# exact opposite of pedantic's `semicolon_if_nothing_returned`, and no
-# spelling satisfies both.
+# Not `semicolon_outside_block`: on a single-statement block no spelling
+# satisfies everything at once. It reads `{ v.push(1); }` and asks for the
+# semicolon outside; `unnecessary_operation`, which is on by default, reads
+# the `{ v.push(1) };` that produces and asks for the braces gone.
 too_long_first_doc_paragraph = "warn"
 undocumented_unsafe_blocks = "warn"
 unnecessary_safety_comment = "warn"
