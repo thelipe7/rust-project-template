@@ -36,9 +36,12 @@ _exclude:
   # Packaging and the consumer fixture are the library's release rehearsal.
   - "{% if project_kind != 'published_library' %}/.github/workflows/package.yml{% else %}/.copier-never-package{% endif %}"
   # Only an application ends up with a `release.yml` it did not write —
-  # `dist generate` produces that one, and this is the file that stops
-  # actionlint reporting dist's shell style as though somebody could fix it.
+  # `dist generate` produces that one, and these are the two files that stop
+  # actionlint and zizmor reporting dist's own code as though somebody here
+  # could fix it. An inline ignore comment cannot do the job: the next
+  # `dist generate` deletes it.
   - "{% if project_kind == 'published_library' %}/.github/actionlint.yaml{% else %}/.copier-never-actionlint{% endif %}"
+  - "{% if project_kind == 'published_library' %}/.github/zizmor.yml{% else %}/.copier-never-zizmor{% endif %}"
   # Both below are answers, not kinds: a project says whether it links system
   # libraries, and whether cross-compiling to musl is a question it can answer.
   #
@@ -343,10 +346,11 @@ system_packages:
 musl_check:
   type: bool
   help: |-
-    Check on every change that the workspace cross-compiles to
-    x86_64-unknown-linux-musl? A statically linked binary starts on
-    distributions older than the runner that built it, and this is where a
-    dependency assuming glibc stops compiling.
+    Does musl matter to this project? A statically linked binary starts on
+    distributions older than the runner that built it — the usual complaint
+    about a released Rust binary — and this is where a dependency assuming
+    glibc stops compiling. Yes adds a CI job checking it on every change{% if project_kind != 'published_library' %},
+    and ships musl binaries from dist{% endif %}.
     {%- if system_packages.strip() %}
     Answer no: this project links {{ system_packages.split() | join(', ') }},
     and a library installed for the runner's own architecture cannot be linked

@@ -1,0 +1,35 @@
+# `.github/workflows/release.yml` is not written here. `dist generate` writes
+# it from dist-workspace.toml, and `dist-check.yml` fails if the two drift — so
+# the inline `# zizmor: ignore[...]` comment that silences a finding everywhere
+# else in this repository is not available: the next `dist generate` deletes
+# it. The file has to be excused from outside, which is what this is.
+#
+# The same reason `.github/actionlint.yaml` exists, for the same file. Both are
+# scoped to it alone, so every hand-written workflow stays under the full
+# check.
+#
+# What is being excused, and why each is dist's call rather than this
+# project's:
+#
+# - `excessive-permissions`: `contents: write` at the workflow level. A release
+#   creates a GitHub release and uploads assets to it, which is what that
+#   permission is for; dist declares it once rather than per job.
+# - `template-injection`: dist's own plan output and a `workflow_dispatch`
+#   input interpolated into `run:` blocks. Both come from dist itself and from
+#   a form only somebody who can already write to this repository can submit.
+# - `secrets-inherit`: `secrets: inherit` into the reusable workflows dist was
+#   told to call. Those are this repository's own, called from this repository
+#   — not third-party.
+#
+# Reviewing these is `dist generate` and reading the diff, not editing the
+# file.
+rules:
+  excessive-permissions:
+    ignore:
+      - release.yml
+  template-injection:
+    ignore:
+      - release.yml
+  secrets-inherit:
+    ignore:
+      - release.yml

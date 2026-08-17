@@ -302,6 +302,7 @@ class TemplateGenerationTests(unittest.TestCase):
             # rather than written, and this is what tells actionlint not to
             # report dist's shell style as though somebody could fix it.
             (".github/actionlint.yaml", False),
+            (".github/zizmor.yml", False),
             (".github/workflows/release-gate.yml", False),
             (".github/workflows/sbom.yml", False),
             (".github/workflows/dist-check.yml", False),
@@ -366,6 +367,15 @@ class TemplateGenerationTests(unittest.TestCase):
         paths = self.paths_in(declined)
         self.assertNotIn(".github/system-packages", paths)
         self.assertNotIn(".github/workflows/musl.yml", paths)
+        # And dist ships what CI compiles: no musl job, no musl binaries.
+        configuration = (declined / "dist-workspace.toml").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("musl", configuration)
+        self.assertIn(
+            "x86_64-unknown-linux-musl",
+            (declared / "dist-workspace.toml").read_text(encoding="utf-8"),
+        )
 
     def test_the_license_files_are_the_ones_the_expression_names(self) -> None:
         """A project carries the text of every license it offers, and no other.
@@ -441,33 +451,54 @@ class TemplateGenerationTests(unittest.TestCase):
                     f"{path.relative_to(generated)} was copied without being rendered",
                 )
 
-    def test_generated_workflows_pass_actionlint(self) -> None:
+    def test_generated_workflows_survive_the_checks_they_ship_with(self) -> None:
         """The workflows are shipped as text and never run before a project has
         them, so nothing here would notice a broken one until a real repository
-        did.
+        did. Both tools the generated `Workflow syntax` job runs are run here,
+        against the same tree, with the same flags.
 
         An application's `.github/workflows/release.yml` is written by `dist
-        generate`, not shipped — so linting a project as generated lints every
-        workflow except the one nobody wrote, which is the one whose shell
+        generate`, not shipped — so checking a project as generated checks
+        every workflow except the one nobody wrote, which is the one whose
         style is not ours to fix. Generating it first is what makes this the
-        same question a real repository asks.
+        same question a real repository asks, and what the two ignore files
+        beside it exist to answer.
 
-        Skipped rather than failed where actionlint is absent: the template's
-        own CI installs it, and a contributor without it should still be able
-        to run the suite.
+        Each half skips rather than fails where its tool is absent: the
+        template's own CI installs both, and a contributor without them should
+        still be able to run the suite.
         """
-        if shutil.which("actionlint") is None:
-            self.skipTest("actionlint is not installed")
+        if shutil.which("actionlint") is None and shutil.which("zizmor") is None:
+            self.skipTest("neither actionlint nor zizmor is installed")
 
         for project_kind in ("published_library", "workspace_app"):
             with self.subTest(project_kind=project_kind):
                 generated = self.render(project_kind=project_kind)
-                # actionlint wants a repository to resolve `./`-relative
-                # actions and the default branch against.
+                # Both want a repository: actionlint to resolve `./`-relative
+                # actions and the default branch, zizmor to know what it is
+                # auditing.
                 self.git(generated, "init", "--initial-branch=main")
                 if project_kind == "workspace_app" and shutil.which("dist"):
                     self.generate_release_workflow(generated)
-                subprocess.run(["actionlint"], cwd=generated, check=True)
+                if shutil.which("actionlint"):
+                    subprocess.run(["actionlint"], cwd=generated, check=True)
+                if shutil.which("zizmor"):
+                    subprocess.run(
+                        [
+                            "zizmor",
+                            "--persona=regular",
+                            "--min-severity=medium",
+                            "--min-confidence=medium",
+                            # Offline: the audits that ask GitHub about an
+                            # action's tags need a token this suite has no
+                            # business holding, and their findings are about
+                            # pins rather than about the template.
+                            "--offline",
+                            ".",
+                        ],
+                        cwd=generated,
+                        check=True,
+                    )
 
     def test_every_action_in_a_generated_project_is_pinned_to_a_commit(self) -> None:
         """A tag is a name the publisher can move; a commit is not.
