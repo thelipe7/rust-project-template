@@ -15,9 +15,9 @@ cargo xtask docs      # rustdoc, warnings denied
 {% if project_kind == "published_library" -%}
 cargo xtask package   # what publishing would ship, and a consumer building it
 {% else -%}
-cargo xtask dist      # the shippable artifacts, built for this machine —
-                      # the one task the gate does not run
+cargo xtask dist      # the shippable artifacts, built for this machine
 {% endif -%}
+cargo xtask fuzz      # builds the fuzz targets; a run is started by hand
 ```
 
 `cargo xtask ci` is the gate CI runs, so there is nothing to remember to pass
@@ -47,6 +47,28 @@ the one thing it does not run, so `cargo test --doc` runs alongside.
 of the gate: it is there to try a packaging change locally rather than by
 tagging a release and reading the CI log.
 {% endif %}
+`fuzz` builds every fuzz crate it finds and stops there. A fuzzer is a search
+rather than a check — it answers "not yet" until it answers "here", and
+neither answer is a thing to hold a change to — so neither the gate nor any
+workflow ever starts one. Compiling a target is a check, though, and the one
+nothing else performs: a fuzz crate is a workspace of its own, so a change to
+the API a target calls would otherwise break it silently and stay broken until
+somebody thought to fuzz. It finds nothing and succeeds where there is no fuzz
+crate.
+
+A real search needs a nightly toolchain, cargo-fuzz, and someone to ask for
+it, from inside the crate that carries the target:
+
+```bash
+cargo install cargo-fuzz
+cd <crate>/fuzz && cargo +nightly fuzz run <target>
+```
+
+No corpus is committed, and the scaffolded `.gitignore` keeps it that way. An
+input that found something belongs in a regression test in the crate it broke,
+where the gate runs it on every change, not in a directory the gate never
+opens.
+
 ## Dependencies
 
 `Cargo.lock` is committed and every task above passes `--locked`, so a change
@@ -131,7 +153,8 @@ named here rather than installed:
   fuzzer calls a function, not a running server — the HTTP layer is the
   framework's, already fuzzed upstream — so the day a crate under `crates/`
   parses outside input, run `cargo fuzz init` inside that crate and point
-  the target at that function.
+  the target at that function. `cargo xtask fuzz` finds it from then on and
+  keeps it compiling; no wiring needed.
 {% endif -%}
 - **cargo-insta** — snapshot testing: assert a complex output once, review
   its diffs forever after. For output too large to write expectations by
