@@ -247,6 +247,78 @@ class TemplateGenerationTests(unittest.TestCase):
                         check=True,
                     )
 
+    def test_the_fuzz_task_finds_every_fuzz_crate_and_stays_out_of_the_gate(
+        self,
+    ) -> None:
+        """A fuzz crate is a workspace of its own — nightly and a sanitizer,
+        deliberately outside the tree the gate compiles — so nothing else
+        builds its targets, and a change to the API a target calls breaks it
+        silently and stays broken. `cargo xtask fuzz` is what compiles them,
+        and it finds them rather than being told where they are: `fuzz/` at
+        the root, which the scaffold writes, and `crates/<name>/fuzz`, which a
+        workspace grows by hand.
+
+        Building a real target needs nightly and cargo-fuzz, which this suite
+        does not require, so what is asserted here is the discovery: nothing
+        found is a success, and a directory found is an attempt to build it —
+        an attempt that fails, because these stubs are not crates.
+
+        Compiling a target is a check; running one is a search. The search
+        stays out of the gate and out of CI, which is the other half of this.
+        """
+        generated = self.render(project_kind="workspace_app")
+
+        # The case most projects are in, and so the one that must not be
+        # something to remember to ignore.
+        subprocess.run(["cargo", "xtask", "fuzz"], cwd=generated, check=True)
+
+        for planted, layout in (("fuzz", "fuzz"), ("crates/parser", "crates/parser/fuzz")):
+            with self.subTest(layout=layout):
+                stub = generated / layout / "Cargo.toml"
+                stub.parent.mkdir(parents=True)
+                stub.write_text("# Not a crate.\n", encoding="utf-8")
+                # A crate under `crates/` is a workspace member, and one
+                # without a manifest fails the workspace rather than the task
+                # — which would pass this test for the wrong reason.
+                if layout.startswith("crates/"):
+                    (stub.parent.parent / "src").mkdir()
+                    (stub.parent.parent / "src/lib.rs").write_text(
+                        "", encoding="utf-8"
+                    )
+                    (stub.parent.parent / "Cargo.toml").write_text(
+                        '[package]\nname = "parser"\n'
+                        'version = "0.0.0"\nedition = "2024"\n'
+                        'license = "MIT"\n',
+                        encoding="utf-8",
+                    )
+                found = subprocess.run(
+                    ["cargo", "xtask", "fuzz"],
+                    cwd=generated,
+                    capture_output=True,
+                )
+                shutil.rmtree(generated / planted)
+                # The task's own words for a child that ran and failed, which
+                # is what proves it stood in that directory and started one.
+                self.assertIn(
+                    "`cargo` exited with",
+                    found.stderr.decode(),
+                    f"`cargo xtask fuzz` did not look inside {layout}",
+                )
+
+        # Named where somebody looks for it, and nowhere it would run.
+        usage = subprocess.run(["cargo", "xtask"], cwd=generated, capture_output=True)
+        self.assertIn("fuzz", usage.stderr.decode())
+        source = (generated / "xtask/src/main.rs").read_text(encoding="utf-8")
+        self.assertNotIn('run("fuzz")', source)
+        self.assertIn(
+            "cargo xtask fuzz",
+            (generated / "CONTRIBUTING.md").read_text(encoding="utf-8"),
+        )
+        for workflow in (generated / ".github/workflows").iterdir():
+            self.assertNotIn(
+                "xtask fuzz", workflow.read_text(encoding="utf-8"), str(workflow)
+            )
+
     def test_all_supported_profile_combinations_render(self) -> None:
         for project_kind in ("published_library", "workspace_app"):
             for unsafe_policy in ("deny", "scoped"):

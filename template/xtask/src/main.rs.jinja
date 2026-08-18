@@ -1,7 +1,7 @@
 //! The workspace's task runner.
 //!
 //! One entry point for everything a change has to pass — `cargo xtask
-//! <check|lint|features|test|docs|bench|{{ "package" if project_kind == "published_library" else "dist" }}|ci>` — so that what CI runs
+//! <check|lint|features|test|docs|bench|fuzz|{{ "package" if project_kind == "published_library" else "dist" }}|ci>` — so that what CI runs
 //! and what a developer runs cannot drift apart. Written in Rust rather than
 //! as a shell script or a Makefile because it is then built and checked by the
 //! same toolchain as the code it verifies.
@@ -13,6 +13,7 @@
 
 use std::env;
 use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 /// Whether a variable is Cargo describing xtask to itself.
@@ -39,7 +40,7 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    command_with_env(program, args, &[])
+    execute(program, args, &[], None)
 }
 
 fn command_with_env<I, S>(
@@ -51,8 +52,37 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
+    execute(program, args, environment, None)
+}
+
+/// Runs a command from inside `directory` rather than the workspace root.
+///
+/// For a crate that is its own workspace, which no flag from here can reach:
+/// `--manifest-path` still resolves the workspace it is run from, so the only
+/// way into one is to stand in it.
+fn command_in<I, S>(directory: &Path, program: &str, args: I) -> Result<(), String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    execute(program, args, &[], Some(directory))
+}
+
+fn execute<I, S>(
+    program: &str,
+    args: I,
+    environment: &[(&str, &str)],
+    directory: Option<&Path>,
+) -> Result<(), String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
     let mut child = Command::new(program);
     child.args(args);
+    if let Some(directory) = directory {
+        child.current_dir(directory);
+    }
     for (variable, _) in env::vars() {
         if describes_xtask_to_itself(&variable) {
             child.env_remove(&variable);
@@ -89,6 +119,28 @@ fn workspace_has_a_library() -> bool {
     })
 }
 {% endif %}
+/// Every fuzz crate in the repository, in a stable order.
+///
+/// Found rather than listed, so that a crate growing a fuzz target is covered
+/// by having one rather than by somebody remembering this function. Both
+/// layouts: `fuzz/` at the root, which is what the scaffold writes, and
+/// `crates/<name>/fuzz`, which is what a workspace grows by hand.
+///
+/// A missing `crates/` directory is swallowed rather than reported: a
+/// single-crate project does not have one, and its absence is not an error.
+fn fuzz_crates() -> Vec<PathBuf> {
+    let mut found: Vec<PathBuf> = std::fs::read_dir("crates")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path().join("fuzz"))
+        .chain(std::iter::once(PathBuf::from("fuzz")))
+        .filter(|path| path.join("Cargo.toml").is_file())
+        .collect();
+    found.sort();
+    found
+}
+
 fn run(task: &str) -> Result<(), String> {
     match task {
         "check" => cargo([
@@ -181,6 +233,28 @@ fn run(task: &str) -> Result<(), String> {
         // Succeeds with no benchmarks — add a `benches/` target and a
         // harness and it starts measuring.
         "bench" => cargo(["bench", "--workspace", "--all-features", "--locked"]),
+        // The fuzz targets, built but not run.
+        //
+        // Outside the gate, because a fuzzer is a search rather than a check:
+        // it answers "not yet" until it answers "here", and neither answer is
+        // a thing to hold a change to. Building them is a check, though, and
+        // the one that pays: a fuzz crate is a workspace of its own (nightly,
+        // a sanitizer), so nothing else in the tree compiles it, and a change
+        // to the API a target calls would otherwise break it silently and
+        // stay broken until somebody thought to fuzz.
+        //
+        // Needs cargo-fuzz and a nightly toolchain. `cargo +nightly fuzz run
+        // <target>` is how a run is actually started; this only proves the
+        // targets still compile.
+        "fuzz" => {
+            let directories = fuzz_crates();
+            if directories.is_empty() {
+                eprintln!("no fuzz crate in this repository; nothing to build");
+            }
+            directories.iter().try_for_each(|directory| {
+                command_in(directory, "cargo", ["+nightly", "fuzz", "build"])
+            })
+        }
         // Warnings denied, because a broken intra-doc link is a doc page that
         // silently stops linking rather than a page that fails to build.
         "docs" => command_with_env(
@@ -237,7 +311,7 @@ fn run(task: &str) -> Result<(), String> {
             run("docs")
 {% endif %}        }
         _ => Err(format!(
-            "unknown task `{task}`; expected check, lint, features, test, docs, bench, {{ "package" if project_kind == "published_library" else "dist" }}, or ci"
+            "unknown task `{task}`; expected check, lint, features, test, docs, bench, fuzz, {{ "package" if project_kind == "published_library" else "dist" }}, or ci"
         )),
     }
 }
@@ -245,7 +319,7 @@ fn run(task: &str) -> Result<(), String> {
 fn main() -> ExitCode {
     let mut args = env::args().skip(1);
     let Some(task) = args.next() else {
-        eprintln!("usage: cargo xtask <check|lint|features|test|docs|bench|{{ "package" if project_kind == "published_library" else "dist" }}|ci>");
+        eprintln!("usage: cargo xtask <check|lint|features|test|docs|bench|fuzz|{{ "package" if project_kind == "published_library" else "dist" }}|ci>");
         return ExitCode::from(2);
     };
 
