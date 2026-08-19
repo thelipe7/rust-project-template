@@ -32,6 +32,10 @@ ANSWERS = {
     "copyright_holder": "Example Holder",
     "copyright_year": "2026",
     "unsafe_policy": "deny",
+    # The strictest of the locales `typos` offers, for the same reason as the
+    # surfaces below: it is the answer that gives the generated project's gate
+    # something to enforce. `en` is what the dedicated test renders.
+    "prose_locale": "en-us",
     "clippy_pedantic": "true",
     # A native dependency and the musl check are independent answers, and both
     # are answered yes here for the same reason as the surfaces below: yes is
@@ -411,6 +415,26 @@ class TemplateGenerationTests(unittest.TestCase):
         self.assertNotIn("fuzz/Cargo.toml", application)
         self.assertIn(".github/workflows/scorecard.yml", application)
         self.assertIn(".github/workflows/mutants.yml", application)
+
+    def test_the_prose_locale_is_the_answer_and_sits_with_the_typos_config(
+        self,
+    ) -> None:
+        """`typos` applies its British-to-American mapping only when it is
+        told a variant, so the answer is what makes a spelling a build
+        failure. It goes in `Cargo.toml`, beside the exclude list: a
+        `typos.toml` beside a manifest wins over `[workspace.metadata.typos]`
+        outright rather than merging with it, so a second file would silently
+        drop `target/` back into the check."""
+        for answer in ("en-us", "en"):
+            rendered = self.render(
+                project_kind="published_library", prose_locale=answer
+            )
+            manifest = (rendered / "Cargo.toml").read_text()
+            self.assertIn(
+                f'[workspace.metadata.typos.default]\nlocale = "{answer}"',
+                manifest,
+            )
+            self.assertNotIn("typos.toml", self.paths_in(rendered))
 
     def test_native_dependencies_are_declared_once_and_musl_is_optional(
         self,

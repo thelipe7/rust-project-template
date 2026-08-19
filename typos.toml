@@ -1,0 +1,14 @@
+# Which English this repository writes. `typos` carries the
+# British-to-American mapping and applies none of it until it is told a
+# variant, so this line is what makes a spelling a CI failure rather than a
+# matter of taste. A hand-written word list is the alternative, and it has no
+# line for the noun after the participle, for any plural, or for a compound
+# identifier.
+#
+# This is the template's own copy. A generated project answers `prose_locale`
+# and gets the same setting in its `Cargo.toml`, where its `typos`
+# configuration already lives — a `typos.toml` beside a manifest wins over
+# `[workspace.metadata.typos]` outright rather than merging with it, which
+# would drop the exclude list.
+[default]
+locale = "en-us"

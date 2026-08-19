@@ -329,7 +329,7 @@ ask_groups() {
 		n | N) selected=() ;;
 		*)
 			for choice in $reply; do
-				# Anything unrecognised gets said so, because a menu that
+				# Anything unrecognized gets said so, because a menu that
 				# silently redraws reads as a menu that ignored you.
 				if ! [[ "$choice" =~ ^[0-9]+$ ]]; then
 					printf '  "%s" is not an option — a number, "a", "n", or Enter to apply.\n' "$choice" >&2

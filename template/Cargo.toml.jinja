@@ -94,6 +94,15 @@ repository = "https://github.com/{{ github_owner }}/{{ project_name }}"
 [workspace.metadata.typos.files]
 extend-exclude = ["target/"]
 
+# Which English this project writes, answered when it was generated. `typos`
+# carries the British-to-American mapping and applies none of it until it is
+# told a variant, so this line is what makes a spelling a build failure rather
+# than a matter of taste — over prose, doc comments, test names and identifiers
+# alike. A hand-written word list is the alternative, and it has no line for
+# the noun after the participle, for any plural, or for a compound identifier.
+[workspace.metadata.typos.default]
+locale = "{{ prose_locale }}"
+
 # Declared once for the whole workspace, and inherited by every member through
 # `[lints] workspace = true`. A member that sets its own would be exempt from
 # whatever is tightened here later, silently.
