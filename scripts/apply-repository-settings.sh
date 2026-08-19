@@ -44,7 +44,7 @@ group_summary() {
 
 # Only the labels the generated project's own automation opens issues and
 # pull requests with: how a maintainer triages by hand is theirs to decide,
-# not the template's. Colour and description are part of the definition — a
+# not the template's. Color and description are part of the definition — a
 # label created on the fly by `gh issue create --label` gets neither.
 LABELS=(
 	"release|5319e7|Opened by release-plz to prepare a version"
@@ -75,7 +75,7 @@ LABELS=(
 # The five platforms are listed individually because that is what claiming to
 # support them means: a change that breaks aarch64 Windows does not merge.
 #
-# `strict: false` — a required rebase onto main before every merge serialises
+# `strict: false` — a required rebase onto main before every merge serializes
 # the queue for a guarantee that a linear history already mostly provides.
 #
 # Only the checks every generated project reports are named. `linux-musl` and
