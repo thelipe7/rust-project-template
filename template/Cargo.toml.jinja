@@ -86,13 +86,23 @@ repository = "https://github.com/{{ github_owner }}/{{ project_name }}"
 # inside a repository — and `cargo xtask ci` has to pass before `git init`
 # as much as after it.
 #
+# `ignore-hidden` because typos walks a directory the way a search tool does,
+# not the way a linter does: hidden paths are skipped unless it is told
+# otherwise, and here that is the whole of `.github/` — every workflow, the
+# composite action, the issue templates — plus `.cargo/` and `.config/`. The
+# default leaves the spelling gate blind to them. `.git/` then has to be
+# named, because it is hidden rather than gitignored: its objects are
+# compressed binary that decodes into false positives, and its reflog quotes
+# the subject of every commit ever written.
+#
 # A word that only looks like a typo — a misspelled protocol field, a domain
 # term, somebody's surname — is mapped to itself, recording the decision:
 #
 #   [workspace.metadata.typos.default.extend-words]
 #   <the word> = "<the same word>"
 [workspace.metadata.typos.files]
-extend-exclude = ["target/"]
+ignore-hidden = false
+extend-exclude = ["target/", ".git/"]
 
 # Which English this project writes, answered when it was generated. `typos`
 # carries the British-to-American mapping and applies none of it until it is
