@@ -436,6 +436,41 @@ class TemplateGenerationTests(unittest.TestCase):
             )
             self.assertNotIn("typos.toml", self.paths_in(rendered))
 
+    def test_the_spelling_gate_reads_the_hidden_files_too(self) -> None:
+        """`typos` walks a directory the way a search tool does: hidden paths
+        are skipped unless it is told otherwise, which would leave the whole
+        of `.github/` — the workflows, the composite action, the issue
+        templates — out of the only check that reads their prose. Asserted by
+        asking typos what it would read, rather than by reading back the
+        setting that is supposed to cause it.
+
+        `target/` and `.git/` stay out: the first is build output, the second
+        is compressed objects and a reflog quoting subjects the project may
+        since have corrected.
+        """
+        rendered = self.render(project_kind="published_library")
+        listed = subprocess.run(
+            ["typos", "--files"],
+            cwd=rendered,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        # typos prints its paths relative to the directory it walked, which
+        # is the generated project rather than this suite's own.
+        read = {
+            (rendered / line).resolve().relative_to(rendered.resolve()).as_posix()
+            for line in listed.splitlines()
+            if line
+        }
+
+        self.assertIn(".github/workflows/ci.yml", read)
+        self.assertIn(".github/actions/rust/action.yml", read)
+        self.assertIn(".github/ISSUE_TEMPLATE/bug.yml", read)
+        self.assertIn(".config/nextest.toml", read)
+        self.assertIn(".cargo/config.toml", read)
+        self.assertFalse({path for path in read if path.startswith(".git/")})
+
     def test_native_dependencies_are_declared_once_and_musl_is_optional(
         self,
     ) -> None:

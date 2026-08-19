@@ -1,3 +1,18 @@
+# `typos` walks a directory the way a search tool does, not the way a linter
+# does: hidden paths are skipped unless it is told otherwise, and here that is
+# the whole of `.github/` — every workflow, the composite action, the issue
+# templates — plus `.cargo/`, `.config/` and `.editorconfig`. Those carry as
+# much prose as the Markdown does, so the default leaves the spelling gate
+# blind to more than half of what it is meant to read.
+#
+# `.git/` then has to be named, because it is hidden rather than ignored:
+# its reflog quotes the subject of every commit ever written here, including
+# the ones this repository has already corrected, and its objects are
+# compressed binary that decodes into false positives.
+[files]
+ignore-hidden = false
+extend-exclude = [".git/"]
+
 # Which English this repository writes. `typos` carries the
 # British-to-American mapping and applies none of it until it is told a
 # variant, so this line is what makes a spelling a CI failure rather than a
