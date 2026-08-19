@@ -633,7 +633,7 @@ class TemplateGenerationTests(unittest.TestCase):
             self.assertRegex(uses, r"@[0-9a-f]{40}$", f"{uses} is not pinned")
 
         # Generating must not rewrite the configuration it read. `dist init`
-        # does exactly that — it normalises this file from its own template
+        # does exactly that — it normalizes this file from its own template
         # and drops every comment — which is why the documented step is
         # `generate`, and why this asserts rather than trusts it.
         self.git(generated, "diff", "--exit-code", "--", "dist-workspace.toml")
@@ -822,7 +822,7 @@ class TemplateGenerationTests(unittest.TestCase):
         subprocess.run(["git", *args], cwd=cwd, check=True)
 
     def generate_release_workflow(self, generated: Path) -> Path:
-        """Runs `dist generate` in an already-initialised repository.
+        """Runs `dist generate` in an already-initialized repository.
 
         dist reads the workspace through git and refuses a tree it cannot
         describe, so the commit is part of the step rather than setup for it.

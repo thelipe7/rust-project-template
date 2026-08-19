@@ -69,7 +69,7 @@ license = "{{ license_expression }}"
 publish = false
 description = "{{ project_description | trim }}"
 # Not for a registry — `dist` reads it to know where the releases it builds
-# are hosted, and refuses to initialise without it.
+# are hosted, and refuses to initialize without it.
 repository = "https://github.com/{{ github_owner }}/{{ project_name }}"
 
 # Every dependency declared once here and taken with `{ workspace = true }` in
@@ -176,7 +176,7 @@ if_then_some_else_none = "warn"
 map_err_ignore = "warn"
 # One module layout, picked here so the second multi-file module cannot pick
 # the other one. `foo.rs` beside `foo/`, which is what this bans `mod.rs` in
-# favour of: the file is then named after the module in the file tree as well
+# favor of: the file is then named after the module in the file tree as well
 # as in the source, and a directory of `mod.rs` tabs is nobody's idea of an
 # editor.
 mod_module_files = "warn"
