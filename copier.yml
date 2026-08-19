@@ -185,7 +185,7 @@ project_description:
 github_owner:
   type: str
   help: |-
-    The GitHub account or organisation the repository lives under. The issue
+    The GitHub account or organization the repository lives under. The issue
     forms link to this repository's own Discussions and private advisory form,
     and a link has to name the account to reach them.
   validator: >-
@@ -312,6 +312,26 @@ unsafe_policy:
   choices:
     Deny unsafe code: deny
     Allow scoped and documented unsafe code: scoped
+
+# `typos` is already in the gate, and it carries a British-to-American mapping
+# it does not apply until it is told which English the project writes. Asked
+# rather than decided here, because a template cannot know: `en` is the answer
+# that leaves it catching outright misspellings and nothing else, which is what
+# it does today.
+prose_locale:
+  type: str
+  help: |-
+    Which English does this project write? `typos` runs in the gate, so the
+    answer is what turns a spelling into a build failure rather than a matter
+    of taste — over prose, doc comments, test names and identifiers alike.
+    A hand-written word list is the alternative, and it has no line for the
+    noun after the participle, for any plural, or for a compound identifier.
+  choices:
+    American (en-US): en-us
+    British (en-GB): en-gb
+    Canadian (en-CA): en-ca
+    Australian (en-AU): en-au
+    No variant — catch misspellings only: en
 
 # Asked rather than decided here, because it is the one lint group where the
 # right answer depends on the code. Enabled, it is enabled whole — cherry
