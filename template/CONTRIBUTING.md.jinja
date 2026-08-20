@@ -92,6 +92,25 @@ newer API.
 There is no `rust-version`: nobody compiles this project but the people
 working on it, and the pinned toolchain is the floor.
 {% endif %}
+## Compatibility
+
+Compatibility is not a constraint yet. Change public types, formats and file
+layout **in place**: edit the shape, update every call site and the tests, and
+drop the old one. No deprecated alias, no compatibility re-export, no version
+field guarding a record only this repository has ever written — a breaking
+change costs nothing today, and a shim kept for an old shape costs from every
+change onward.
+{% if project_kind == "published_library" %}
+That is what the `0.` in the version promises, and it is the whole of the
+promise: under Cargo's rules `0.1` and `0.2` are separate incompatible
+versions, so a consumer who pinned one is never moved off it by accident.
+Reaching `1.0` is the decision to stop, and until it is taken deliberately,
+the answer to "can this change?" is yes.
+{% else %}
+Nothing outside this repository depends on these types, so the only cost of a
+breaking change is the call sites in it — which the compiler lists. The day
+that stops being true is the day this section needs rewriting.
+{% endif %}
 ## Releasing
 
 release-plz keeps a pull request open carrying the next version and the
