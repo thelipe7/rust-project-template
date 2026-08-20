@@ -72,18 +72,22 @@ reachable by anybody who already generated a project.
 
 ## Pull requests
 
+Keep each pull request focused, and add or update a test at the seam being
+changed — which here is always a generated project, never the Jinja that
+produced it.
+
 Pull requests merge by rebase, so every commit lands on the default branch
 exactly as it was written. That is why each rule below is about the individual
 commit rather than the pull request:
 
 - Conventional Commits: `<type>(scope): <description>`, imperative mood, and
-  CI checks it — on every commit, and on the pull request title. The types
-  are `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`,
-  `revert`, `style` and `test`. Mark a breaking change with `!` before the
-  colon — a break that does not say so ships as a patch.
+  CI checks it — on every commit, and on the pull request title. The types are
+  `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`,
+  `style` and `test`. Mark a breaking change with `!` before the colon — a
+  break that does not say so ships as a patch.
 - Every commit carries a `Signed-off-by` line (`git commit -s`) under the
   [Developer Certificate of Origin](https://developercertificate.org/),
-  which CI checks commit by commit.
+  which CI checks commit by commit against each commit's own author.
 - Hard-wrap commit body lines at 72 characters.
 - One change per commit: each commit is a single coherent change, and its
   subject says what that change is. Every subject lands on the default branch
