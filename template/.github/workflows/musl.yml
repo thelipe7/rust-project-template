@@ -49,4 +49,30 @@ jobs:
 
       - run: rustup target add x86_64-unknown-linux-musl
 
-      - run: cargo check --workspace --all-targets --all-features --locked --target x86_64-unknown-linux-musl
+      # `--workspace` unless `.github/musl-packages` names a subset. A
+      # workspace is not always uniformly portable: one binary can be the one
+      # that ships statically linked while another pulls in a dependency with
+      # no musl build at all, and a whole-workspace check there is red for a
+      # reason nobody intends to fix.
+      #
+      # Read from a file rather than written into this workflow, for the reason
+      # `.github/system-packages` is: the scope is a property of the project,
+      # and a later `copier update` has one file to merge instead of a hand-
+      # edited `run:` block to reconcile.
+      - name: Check what this project claims can be built statically
+        run: |
+          scope=()
+          if [ -f .github/musl-packages ]; then
+            while read -r line || [ -n "$line" ]; do
+              line="${line%%#*}"
+              read -ra words <<< "$line"
+              for word in "${words[@]}"; do
+                scope+=(-p "$word")
+              done
+            done < .github/musl-packages
+          fi
+          if [ "${#scope[@]}" -eq 0 ]; then
+            scope=(--workspace)
+          fi
+          cargo check "${scope[@]}" --all-targets --all-features --locked \
+            --target x86_64-unknown-linux-musl

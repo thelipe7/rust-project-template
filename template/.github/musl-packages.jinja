@@ -1,0 +1,8 @@
+# The packages the musl check builds, read by `.github/workflows/musl.yml`.
+# Cargo package names; whitespace and newlines both separate, `#` starts a
+# comment. Empty means the whole workspace, which is what the check does when
+# nothing here names a subset.
+#
+# A crate left out is a crate nothing claims can be built statically. Adding
+# one is an edit here and nowhere else — the workflow names none of them.
+{{ musl_packages }}
