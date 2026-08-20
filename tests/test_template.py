@@ -508,6 +508,38 @@ class TemplateGenerationTests(unittest.TestCase):
             (declared / "dist-workspace.toml").read_text(encoding="utf-8"),
         )
 
+    def test_the_gate_reads_the_manifests_the_spell_checker_skips(self) -> None:
+        """`typos` carries a built-in `lock` file type with checking switched
+        off, and its glob list has `Cargo.toml` in it beside `Cargo.lock` — so
+        walking the tree never reads a manifest, and for a published crate the
+        `description` it skips is the text on the registry page.
+
+        No configuration turns this back on: the built-in type wins over a
+        `[type]` table naming the same glob, and re-enabling `lock` itself
+        would take every lockfile with it. Standard input is the way past it,
+        which is what `lint` does — asserted by planting a misspelling and
+        watching the gate reject it, rather than by reading the code back.
+        """
+        # Transposed here rather than written out, because this repository's
+        # own spelling gate reads this file and would reject the literal.
+        misspelling = "example".replace("am", "ma", 1)
+        rendered = self.render(project_kind="published_library")
+        manifest = rendered / "Cargo.toml"
+        manifest.write_text(
+            manifest.read_text().replace(
+                "An example package", f"An {misspelling} package", 1
+            ),
+            encoding="utf-8",
+        )
+        lint = subprocess.run(
+            ["cargo", "xtask", "lint"],
+            cwd=rendered,
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(lint.returncode, 0)
+        self.assertIn(misspelling, lint.stdout + lint.stderr)
+
     def test_the_license_files_are_the_ones_the_expression_names(self) -> None:
         """A project carries the text of every license it offers, and no other.
 

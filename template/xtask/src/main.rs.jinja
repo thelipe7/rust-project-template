@@ -13,8 +13,9 @@
 
 use std::env;
 use std::ffi::OsStr;
+use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode};
+use std::process::{Command, ExitCode, Stdio};
 
 /// Whether a variable is Cargo describing xtask to itself.
 ///
@@ -141,6 +142,72 @@ fn fuzz_crates() -> Vec<PathBuf> {
     found
 }
 
+/// Every `Cargo.toml` in the repository, in a stable order.
+///
+/// Found rather than listed, so that a crate added later is covered by
+/// existing rather than by somebody remembering this function. `target/` and
+/// `.git/` are skipped for the reason the `typos` configuration skips them:
+/// one holds vendored manifests nobody here wrote, the other is not prose.
+fn manifests(directory: &Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    let Ok(entries) = fs::read_dir(directory) else {
+        return found;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if !matches!(
+                path.file_name().and_then(OsStr::to_str),
+                Some("target" | ".git")
+            ) {
+                found.extend(manifests(&path));
+            }
+        } else if path.file_name() == Some(OsStr::new("Cargo.toml")) {
+            found.push(path);
+        }
+    }
+    found.sort();
+    found
+}
+
+/// Spell-checks the manifests, which `typos` walking the tree does not read.
+///
+/// `typos` carries a built-in `lock` file type with checking switched off, and
+/// its glob list has `Cargo.toml` in it beside `Cargo.lock` — so a misspelling
+/// in a manifest survives the gate. For a published crate that is the
+/// `description` shown on its registry page.
+///
+/// There is no configuration that turns this back on: the built-in type wins
+/// over a `[type]` table naming the same glob, and re-enabling `lock` itself
+/// would take `Cargo.lock` and every other lockfile with it. Standard input is
+/// the way past it — `typos` reads what it is handed without consulting the
+/// name it came from. The cost is the report: every finding points at `-`.
+///
+/// Built here rather than through `execute`, which has no stdin to redirect.
+/// What `execute` adds is the environment scrub for a child that reads
+/// `CARGO_PKG_*` and mistakes xtask for its own package; `typos` reads its
+/// configuration and its input, and nothing else.
+fn typos_over_manifests() -> Result<(), String> {
+    for manifest in manifests(Path::new(".")) {
+        let file = fs::File::open(&manifest)
+            .map_err(|error| format!("failed to open `{}`: {error}", manifest.display()))?;
+        let status = Command::new("typos")
+            .arg("-")
+            .stdin(Stdio::from(file))
+            .status()
+            .map_err(|error| format!("failed to start `typos`: {error}"))?;
+        if !status.success() {
+            return Err(format!(
+                "`typos` rejected `{}` — the report above reads `-`, because \
+                 the manifest was fed in through standard input to get past \
+                 the filename skip",
+                manifest.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn run(task: &str) -> Result<(), String> {
     match task {
         "check" => cargo([
@@ -157,6 +224,7 @@ fn run(task: &str) -> Result<(), String> {
             // misspelling survives every check above because it compiles.
             command("taplo", ["fmt", "--check"])?;
             command("typos", [] as [&str; 0])?;
+            typos_over_manifests()?;
             cargo([
                 "clippy",
                 "--workspace",
