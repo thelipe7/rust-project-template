@@ -59,10 +59,17 @@ Five rules decide almost every question about this repository:
 copier copy --vcs-ref=HEAD . /tmp/try-it
 ```
 
-Mind that `--vcs-ref=HEAD`. Copier reads a local template from its **latest
-tag** when the working tree is clean, so a change that is committed and not
-tagged is silently not what you are testing. An uncommitted working tree is used
-as it stands, with no flag needed.
+Mind that `--vcs-ref=HEAD`. Without it, Copier reads a local template from its
+**latest tag** — not from the working tree, and not from `HEAD` — so a change
+that is committed and not tagged is silently not what you are testing, and an
+uncommitted one is not either. A dirty tree changes nothing about that; the
+flag is what makes Copier read the files as they sit, uncommitted edits
+included.
+
+The test suite reaches the same place differently: it copies the template to a
+temporary directory without its `.git`, which leaves no tag to prefer. Either
+way the rule is the same — a local template that is a Git repository is read
+at its latest tag until something says otherwise.
 
 ## Releasing the template
 
