@@ -191,6 +191,9 @@ the individual commit, not the pull request:
   [Developer Certificate of Origin](https://developercertificate.org/),
   which CI checks commit by commit against each commit's own author.
 - Hard-wrap commit body lines at 72 characters.
-- Atomic commits: one self-sufficient change per commit. Each one lands on the
-  default branch and becomes its own changelog line, so "and also fixed an
-  unrelated thing on the way" belongs in a commit of its own.
+- One change per commit: each commit is a single coherent change, and its
+  subject says what that change is. Every subject lands on the default branch
+  as its own changelog line, so a subject that needs an "and" is two commits.
+  This is a rule about the story the history tells, not about the state of the
+  tree at each step: CI runs on the branch tip, so an intermediate commit that
+  does not build on its own is not worth rewriting history to fix.

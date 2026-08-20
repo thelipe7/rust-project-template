@@ -85,4 +85,10 @@ commit rather than the pull request:
   [Developer Certificate of Origin](https://developercertificate.org/),
   which CI checks commit by commit.
 - Hard-wrap commit body lines at 72 characters.
-- Atomic commits: one self-sufficient change per commit.
+- One change per commit: each commit is a single coherent change, and its
+  subject says what that change is. Every subject lands on the default branch
+  and is what the history between two tags reads as, so a subject that needs an
+  "and" is two commits. This is a rule about the story the history tells, not
+  about the state of the tree at each step: CI runs on the branch tip, so an
+  intermediate commit that does not pass the suite on its own is not worth
+  rewriting history to fix.

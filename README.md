@@ -94,7 +94,7 @@ out in the generated project's own `CONTRIBUTING.md`.
   is not, and `actionlint` and `zizmor` over the lot — zizmor asks whether a
   workflow is safe, a question actionlint does not ask.
 - **Rebase-only merges**, so every commit lands as it was written — the
-  premise for asking each one to be atomic, conventional and signed off, and
+  premise for asking each one to be focused, conventional and signed off, and
   what release-plz reads to build the changelog.
 - **One `[workspace.lints]` table**, inherited by every crate so that none can
   quietly exempt itself.
