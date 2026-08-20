@@ -540,6 +540,42 @@ class TemplateGenerationTests(unittest.TestCase):
         self.assertNotEqual(lint.returncode, 0)
         self.assertIn(misspelling, lint.stdout + lint.stderr)
 
+    def test_the_gate_reaches_the_consumer_fixture_outside_the_workspace(
+        self,
+    ) -> None:
+        """The fixture has to be its own workspace to depend on this crate the
+        way a stranger does, which is exactly why `--all` and `--workspace`
+        stop at its boundary — so the template ships a Rust file its own gate
+        cannot see unless something stands inside the directory. `lint`
+        formats it; `package` lints it, where the build it needs is already
+        being paid for.
+        """
+        rendered = self.render(project_kind="published_library")
+        fixture = rendered / "fixtures/consumer/src/main.rs"
+        original = fixture.read_text()
+
+        fixture.write_text(original.replace("fn main() {", "fn  main( ) {", 1))
+        formatting = subprocess.run(
+            ["cargo", "xtask", "lint"],
+            cwd=rendered,
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(formatting.returncode, 0)
+
+        # Formatted the way rustfmt wants it, so only clippy is left to object.
+        # Appended before the closing brace of `main` rather than at the first
+        # `}`, which belongs to the format string.
+        fixture.write_text(f"{original.rstrip()[:-1]}    return;\n}}\n")
+        linting = subprocess.run(
+            ["cargo", "xtask", "package"],
+            cwd=rendered,
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(linting.returncode, 0)
+        self.assertIn("needless_return", linting.stdout + linting.stderr)
+
     def test_the_license_files_are_the_ones_the_expression_names(self) -> None:
         """A project carries the text of every license it offers, and no other.
 

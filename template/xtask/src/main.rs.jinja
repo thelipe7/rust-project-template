@@ -208,6 +208,54 @@ fn typos_over_manifests() -> Result<(), String> {
     Ok(())
 }
 
+{%- if project_kind == "published_library" %}
+/// The consumer fixture, which every workspace-wide flag stops short of.
+///
+/// It has to be its own workspace to depend on this crate the way a stranger
+/// does, and that is exactly what puts it outside `--workspace` and `--all` —
+/// so the repository ships a Rust file its own gate cannot see unless
+/// something stands inside the directory.
+const CONSUMER: &str = "fixtures/consumer";
+
+/// Formats the fixture, in `lint` beside the formatter that cannot reach it.
+fn consumer_fmt() -> Result<(), String> {
+    command_in(
+        Path::new(CONSUMER),
+        "cargo",
+        ["fmt", "--all", "--", "--check"],
+    )
+}
+
+/// Builds the fixture against this crate, the way a consumer would.
+///
+/// Run from inside it rather than through `--manifest-path`, so that a flag
+/// means what it says: `--all-targets` in a workspace of one is that crate,
+/// and read from the root it would be this one.
+fn consumer_build() -> Result<(), String> {
+    command_in(Path::new(CONSUMER), "cargo", ["build", "--locked"])
+}
+
+/// Lints the fixture, in `package` rather than in `lint`.
+///
+/// This is the arm that already accepts the cost: the fixture shares no
+/// `target/` with the workspace, so linting it anywhere else buys a second
+/// full build of the dependency tree for one file.
+fn consumer_clippy() -> Result<(), String> {
+    command_in(
+        Path::new(CONSUMER),
+        "cargo",
+        [
+            "clippy",
+            "--all-targets",
+            "--locked",
+            "--",
+            "-D",
+            "warnings",
+        ],
+    )
+}
+{%- endif %}
+
 fn run(task: &str) -> Result<(), String> {
     match task {
         "check" => cargo([
@@ -219,6 +267,9 @@ fn run(task: &str) -> Result<(), String> {
         ]),
         "lint" => {
             cargo(["fmt", "--all", "--", "--check"])?;
+{%- if project_kind == "published_library" %}
+            consumer_fmt()?;
+{%- endif %}
             // The other two formatters: `taplo` for the TOML nothing else
             // formats, `typos` for the prose and identifiers, where a
             // misspelling survives every check above because it compiles.
@@ -345,15 +396,8 @@ fn run(task: &str) -> Result<(), String> {
             // And the other half of that question, which packaging cannot
             // answer: whether the public surface works from outside. The
             // fixture depends on this crate the way a stranger would.
-            command(
-                "cargo",
-                [
-                    "build",
-                    "--manifest-path",
-                    "fixtures/consumer/Cargo.toml",
-                    "--locked",
-                ],
-            )
+            consumer_build()?;
+            consumer_clippy()
         }
 {% else %}
         // The shippable artifacts for this machine. CI builds the full target
