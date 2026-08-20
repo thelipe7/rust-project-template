@@ -81,7 +81,9 @@ out in the generated project's own `CONTRIBUTING.md`.
   everywhere run once on Linux; compiling and testing then run on Linux, macOS
   and Windows, on x86_64 and aarch64 each — started immediately rather than
   after the Linux gate, because waiting costs every green run the gate's whole
-  runtime. A musl build too, for the projects that can cross-compile to it.
+  runtime. A musl build too, for the projects that can cross-compile to it —
+  over the whole workspace, or over the packages `.github/musl-packages` names
+  where one crate in it has no musl build at all.
 - **System dependencies named once.** A project that links `libfontconfig1-dev`
   says so in `.github/system-packages`, which every Linux job reads — not as
   an argument eight workflows repeat and every `copier update` has to merge.

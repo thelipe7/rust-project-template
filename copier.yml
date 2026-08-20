@@ -52,6 +52,8 @@ _exclude:
   # the one moment the template is meant to be doing its job.
   - "{% if not (system_packages | default('')).strip() %}/.github/system-packages{% else %}/.copier-never-system-packages{% endif %}"
   - "{% if not (musl_check | default(false)) %}/.github/workflows/musl.yml{% else %}/.copier-never-musl{% endif %}"
+  # The scope that workflow reads, which exists exactly when it does.
+  - "{% if not (musl_check | default(false)) %}/.github/musl-packages{% else %}/.copier-never-musl-packages{% endif %}"
   # Miri interprets a program to find undefined behavior, which is a question
   # only code allowed to write `unsafe` can raise.
   - "{% if unsafe_policy == 'deny' %}/.github/workflows/miri.yml{% else %}/.copier-never-miri{% endif %}"
@@ -377,6 +379,28 @@ musl_check:
     into a musl binary — `pkg-config` refuses, and the job is red until
     somebody builds a musl sysroot.
     {%- endif %}
+
+# Asked only where the check exists. A workspace is not always uniformly
+# portable: one binary can be the one that ships statically linked while
+# another pulls in a dependency that has no musl build at all, and a
+# whole-workspace check in that repository is red for a reason nobody intends
+# to fix. Naming the packages is how the check covers what is meant to be
+# portable and stops asking about what is not.
+musl_packages:
+  type: str
+  when: "{{ musl_check }}"
+  help: |-
+    Which packages the musl check builds, space separated (my-cli my-daemon).
+    Empty for the whole workspace, which is the right answer unless some
+    crate in it cannot build for musl at all — a desktop application whose
+    renderer ships no musl target, say.
+  validator: >-
+    {% for entry in musl_packages.split() %}
+    {% if not (entry | regex_search('^[a-zA-Z0-9][a-zA-Z0-9_-]*$')) %}
+    '{{ entry }}' is not shaped like a Cargo package name: letters, digits,
+    `_` and `-`.
+    {% endif %}
+    {% endfor %}
 
 openssf_scorecard:
   type: bool

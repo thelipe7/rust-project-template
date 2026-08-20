@@ -43,6 +43,10 @@ ANSWERS = {
     # the other way round.
     "system_packages": "libfontconfig1-dev",
     "musl_check": "true",
+    # Named rather than empty, because empty is the branch that renders the
+    # same `--workspace` line the check has always had. The dedicated test
+    # renders both.
+    "musl_packages": "example-ui",
     # The opt-in verification surfaces, all on: the suite's job is to check
     # what the template can generate, and `yes` is the answer that generates
     # something to check. The opt-out is what the dedicated test renders.
@@ -507,6 +511,30 @@ class TemplateGenerationTests(unittest.TestCase):
             "x86_64-unknown-linux-musl",
             (declared / "dist-workspace.toml").read_text(encoding="utf-8"),
         )
+
+    def test_the_musl_check_covers_the_packages_the_answer_names(self) -> None:
+        """A workspace is not always uniformly portable: one binary can be the
+        one that ships statically linked while another pulls in a dependency
+        with no musl build at all, and a whole-workspace check there is red
+        for a reason nobody intends to fix. Empty stays `--workspace`, which
+        is what a project with nothing to exclude should keep."""
+        scoped = self.render(project_kind="workspace_app", musl_packages="example-ui")
+        self.assertIn("example-ui", (scoped / ".github/musl-packages").read_text())
+
+        whole = self.render(project_kind="workspace_app", musl_packages="")
+        self.assertEqual(
+            (whole / ".github/musl-packages").read_text().strip().splitlines()[-1][:1],
+            "#",
+        )
+
+        # And absent altogether where the check itself is, so that the pair is
+        # excluded together rather than leaving a scope for a workflow nobody
+        # generated.
+        declined = self.paths_in(
+            self.render(project_kind="workspace_app", musl_check="false")
+        )
+        self.assertNotIn(".github/workflows/musl.yml", declined)
+        self.assertNotIn(".github/musl-packages", declined)
 
     def test_the_gate_reads_the_manifests_the_spell_checker_skips(self) -> None:
         """`typos` carries a built-in `lock` file type with checking switched
